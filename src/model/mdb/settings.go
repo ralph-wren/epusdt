@@ -74,7 +74,7 @@ const (
 
 type Setting struct {
 	Group       string `gorm:"column:group;size:32;index:settings_group_index" json:"group" enums:"brand,rate,system,epay,okpay" example:"rate"`
-	Key         string `gorm:"column:key;uniqueIndex:settings_key_uindex;size:128" json:"key" example:"rate.forced_rate_list"`
+	Key         string `gorm:"column:key;unique;size:128" json:"key" example:"rate.forced_rate_list"`
 	Value       string `gorm:"column:value;type:text" json:"value" example:"{\"cny\":{\"usdt\":0.14635}}"`
 	Type        string `gorm:"column:type;size:16;default:string" json:"type" enums:"string,int,bool,json" example:"json"`
 	Description string `gorm:"column:description;size:255" json:"description" example:"强制汇率列表"`

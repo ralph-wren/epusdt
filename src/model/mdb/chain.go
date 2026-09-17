@@ -5,7 +5,7 @@ package mdb
 // process the network. When Enabled=false the scanner skips the chain
 // entirely without restarting.
 type Chain struct {
-	Network          string `gorm:"column:network;uniqueIndex:chains_network_uindex;size:32" json:"network" example:"tron"`
+	Network          string `gorm:"column:network;unique;size:32" json:"network" example:"tron"`
 	DisplayName      string `gorm:"column:display_name;size:64" json:"display_name" example:"Tron"`
 	Enabled          bool   `gorm:"column:enabled;default:true" json:"enabled" example:"true"`
 	MinConfirmations int    `gorm:"column:min_confirmations;default:1" json:"min_confirmations" example:"20"`

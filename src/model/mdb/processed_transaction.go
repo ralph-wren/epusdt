@@ -8,7 +8,7 @@ import "strings"
 type ProcessedTransaction struct {
 	Network            string `gorm:"column:network;size:32;uniqueIndex:processed_transactions_network_tx_uindex,priority:1"`
 	BlockTransactionID string `gorm:"column:block_transaction_id;size:191;uniqueIndex:processed_transactions_network_tx_uindex,priority:2"`
-	TradeID            string `gorm:"column:trade_id;size:64;uniqueIndex:processed_transactions_trade_id_uindex"`
+	TradeID            string `gorm:"column:trade_id;size:64;unique"`
 	BaseModel
 }
 

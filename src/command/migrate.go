@@ -147,6 +147,11 @@ func migrateSQLiteDatabases(sourcePrimary, sourceRuntime, target *gorm.DB) (map[
 	if err := backfillMigrationProcessedTransactions(target); err != nil {
 		return nil, err
 	}
+	// Verify that the migrated schema survives the same idempotent migration
+	// pass executed during normal application startup.
+	if err := target.AutoMigrate(models...); err != nil {
+		return nil, fmt.Errorf("verify target schema: %w", err)
+	}
 	return counts, nil
 }
 
