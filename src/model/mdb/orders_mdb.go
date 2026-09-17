@@ -37,7 +37,7 @@ const (
 
 type Orders struct {
 	TradeId            string  `gorm:"column:trade_id;uniqueIndex:orders_trade_id_uindex" json:"trade_id" example:"3nQ9pL2xV7sK1mR8cT4yB_aZ"`
-	OrderId            string  `gorm:"column:order_id;uniqueIndex:orders_order_id_uindex" json:"order_id" example:"ORD20260416001"`
+	OrderId            string  `gorm:"column:order_id;uniqueIndex:orders_api_key_order_id_uindex,priority:2" json:"order_id" example:"ORD20260416001"`
 	ParentTradeId      string  `gorm:"column:parent_trade_id;index:idx_orders_parent_trade_id;default:''" json:"parent_trade_id"`
 	BlockTransactionId string  `gorm:"index:orders_block_transaction_id_index;column:block_transaction_id" json:"block_transaction_id" example:"0xabc123..."`
 	Amount             float64 `gorm:"column:amount" json:"amount" example:"100.0000"`
@@ -69,7 +69,7 @@ type Orders struct {
 	// Existing rows default to on_chain for backward compatibility so upgrades
 	// can rely on AutoMigrate without rewriting old orders.
 	PayProvider string `gorm:"column:pay_provider;size:32;default:on_chain;index:orders_pay_provider_index" json:"pay_provider" example:"on_chain"`
-	ApiKeyID    uint64 `gorm:"column:api_key_id;default:0;index:orders_api_key_id_index" json:"api_key_id" example:"1"`
+	ApiKeyID    uint64 `gorm:"column:api_key_id;default:0;index:orders_api_key_id_index;uniqueIndex:orders_api_key_order_id_uindex,priority:1" json:"api_key_id" example:"1"`
 	// PayBySubId holds the primary-key ID of the sub-order that settled this parent order.
 	// Zero when the parent order was paid directly (no sub-order involved).
 	PayBySubId uint64 `gorm:"column:pay_by_sub_id;default:0" json:"pay_by_sub_id" example:"0"`

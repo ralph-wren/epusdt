@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/GMWalletApp/epusdt/model/data"
@@ -10,6 +11,7 @@ import (
 	"github.com/GMWalletApp/epusdt/util/log"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -153,9 +155,67 @@ func recvLoop(ctx context.Context, client *ethclient.Client, sub ethereum.Subscr
 			if recordEvmLogBlockHeight(network, logPrefix, vLog.BlockNumber) {
 				lastStatsUpdateAt = time.Now()
 			}
+			if !isConfirmedCanonicalEvmLog(ctx, client, network, logPrefix, vLog) {
+				continue
+			}
 			handleLog(client, vLog)
 		}
 	}
+}
+
+func isConfirmedCanonicalEvmLog(ctx context.Context, client *ethclient.Client, network, logPrefix string, vLog types.Log) bool {
+	if vLog.Removed || vLog.BlockNumber == 0 || vLog.BlockHash == (common.Hash{}) {
+		return false
+	}
+
+	chain, err := data.GetChainByNetwork(network)
+	if err != nil || chain == nil || !chain.Enabled {
+		if err != nil {
+			log.Sugar.Warnf("%s load confirmation config failed: %v", logPrefix, err)
+		}
+		return false
+	}
+
+	verifyCtx, cancel := context.WithTimeout(ctx, evmStatsHeaderTimeout)
+	defer cancel()
+
+	latest, err := client.HeaderByNumber(verifyCtx, nil)
+	if err != nil || latest == nil || latest.Number == nil || !latest.Number.IsUint64() {
+		if err != nil && ctx.Err() == nil {
+			log.Sugar.Warnf("%s fetch latest header before settlement failed: %v", logPrefix, err)
+		}
+		return false
+	}
+	if !evmLogHasConfirmations(latest.Number.Uint64(), vLog.BlockNumber, chain.MinConfirmations) {
+		return false
+	}
+
+	canonicalHeader, err := client.HeaderByNumber(verifyCtx, new(big.Int).SetUint64(vLog.BlockNumber))
+	if err != nil || canonicalHeader == nil || canonicalHeader.Hash() != vLog.BlockHash {
+		if err != nil && ctx.Err() == nil {
+			log.Sugar.Warnf("%s verify canonical block failed, block=%d: %v", logPrefix, vLog.BlockNumber, err)
+		}
+		return false
+	}
+
+	receipt, err := client.TransactionReceipt(verifyCtx, vLog.TxHash)
+	if err != nil || receipt == nil || receipt.Status != types.ReceiptStatusSuccessful || receipt.BlockHash != vLog.BlockHash {
+		if err != nil && ctx.Err() == nil {
+			log.Sugar.Warnf("%s verify transaction receipt failed, tx=%s: %v", logPrefix, vLog.TxHash.Hex(), err)
+		}
+		return false
+	}
+	return true
+}
+
+func evmLogHasConfirmations(latestBlock, eventBlock uint64, minConfirmations int) bool {
+	if eventBlock > latestBlock {
+		return false
+	}
+	if minConfirmations < 1 {
+		minConfirmations = 1
+	}
+	return latestBlock-eventBlock+1 >= uint64(minConfirmations)
 }
 
 func shouldRefreshEvmLatestHeader(lastStatsUpdateAt time.Time, inFlight bool, now time.Time) bool {

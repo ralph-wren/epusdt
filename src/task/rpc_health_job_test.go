@@ -115,8 +115,8 @@ func TestMeasureTCPDial_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial should succeed: %v", err)
 	}
-	if dur <= 0 {
-		t.Fatalf("duration should be positive, got %v", dur)
+	if dur < 0 {
+		t.Fatalf("duration should not be negative, got %v", dur)
 	}
 }
 

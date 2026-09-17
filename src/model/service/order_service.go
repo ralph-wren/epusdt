@@ -118,9 +118,9 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 	if err := validateCreateTransactionTokenNetwork(token, network); err != nil {
 		return nil, err
 	}
-	notifyURL := strings.TrimSpace(req.NotifyUrl)
-	if err := security.ValidatePublicHTTPURL(notifyURL); err != nil {
-		return nil, constant.NotifyURLErr
+	notifyURL, err := resolveOrderNotifyURL(req.NotifyUrl, apiKey)
+	if err != nil {
+		return nil, err
 	}
 	paymentType := mdb.PaymentTypeGmpay
 	if strings.EqualFold(req.PaymentType, mdb.PaymentTypeEpay) {
@@ -136,7 +136,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 
 	amountPrecision := data.GetAmountPrecision()
 	payAmount := math.MustParsePrecFloat64(req.Amount, amountPrecision)
-	exist, err := data.GetOrderInfoByOrderId(req.OrderId)
+	exist, err := data.GetOrderInfoByOrderIdForApiKey(apiKeyID(apiKey), req.OrderId)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +239,23 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 	return buildCreateTransactionResponse(order), nil
 }
 
+func resolveOrderNotifyURL(requestedURL string, apiKey *mdb.ApiKey) (string, error) {
+	notifyURL := strings.TrimSpace(requestedURL)
+	if apiKey != nil {
+		configuredURL := strings.TrimSpace(apiKey.NotifyUrl)
+		if configuredURL != "" {
+			if notifyURL != "" && notifyURL != configuredURL {
+				return "", constant.NotifyURLErr
+			}
+			notifyURL = configuredURL
+		}
+	}
+	if err := security.ValidatePublicHTTPURL(notifyURL); err != nil {
+		return "", constant.NotifyURLErr
+	}
+	return notifyURL, nil
+}
+
 // OrderProcessing marks an order as paid and releases its sqlite reservation.
 func OrderProcessing(req *request.OrderProcessingRequest) error {
 	return orderProcessing(req, orderProcessingOptions{
@@ -259,12 +276,12 @@ func orderProcessing(req *request.OrderProcessingRequest, opts orderProcessingOp
 	defer gOrderProcessingLock.Unlock()
 
 	tx := dao.Mdb.Begin()
-	exist, err := data.GetOrderByBlockIdWithTransaction(tx, req.BlockTransactionId)
+	reserved, err := data.ReserveProcessedTransactionWithTransaction(tx, req.Network, req.BlockTransactionId, req.TradeId)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	if exist.ID > 0 {
+	if !reserved {
 		tx.Rollback()
 		return constant.OrderBlockAlreadyProcess
 	}

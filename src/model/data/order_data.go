@@ -110,6 +110,15 @@ func GetOrderInfoByOrderId(orderId string) (*mdb.Orders, error) {
 	return order, err
 }
 
+// GetOrderInfoByOrderIdForApiKey scopes merchant order IDs to the credential
+// that created them.
+func GetOrderInfoByOrderIdForApiKey(apiKeyID uint64, orderID string) (*mdb.Orders, error) {
+	order := new(mdb.Orders)
+	err := dao.Mdb.Model(order).Limit(1).
+		Find(order, "api_key_id = ? AND order_id = ?", apiKeyID, orderID).Error
+	return order, err
+}
+
 // GetOrderInfoByTradeId fetches an order by epusdt trade id.
 func GetOrderInfoByTradeId(tradeId string) (*mdb.Orders, error) {
 	order := new(mdb.Orders)
@@ -127,6 +136,20 @@ func GetOrderByBlockIdWithTransaction(tx *gorm.DB, blockID string) (*mdb.Orders,
 	order := new(mdb.Orders)
 	err := tx.Model(order).Limit(1).Find(order, "block_transaction_id = ?", blockID).Error
 	return order, err
+}
+
+// ReserveProcessedTransactionWithTransaction atomically claims a transaction
+// for one trade. A zero RowsAffected result means another order already owns
+// either the same network+transaction pair or this trade's transaction slot.
+func ReserveProcessedTransactionWithTransaction(tx *gorm.DB, network, blockID, tradeID string) (bool, error) {
+	network, blockID = mdb.NormalizeProcessedTransaction(network, blockID)
+	row := &mdb.ProcessedTransaction{
+		Network:            network,
+		BlockTransactionID: blockID,
+		TradeID:            strings.TrimSpace(tradeID),
+	}
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(row)
+	return result.RowsAffected > 0, result.Error
 }
 
 // GetOrderByBlockTransactionIDs fetches the first order whose stored tx id

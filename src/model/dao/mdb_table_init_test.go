@@ -394,6 +394,11 @@ func setupSeedSettingsTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	t.Cleanup(func() {
+		if sqlDB, closeErr := db.DB(); closeErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
 	if err := db.AutoMigrate(&mdb.Setting{}); err != nil {
 		t.Fatalf("migrate settings: %v", err)
 	}
@@ -410,6 +415,11 @@ func setupSeedTableTestDB(t *testing.T, models ...interface{}) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
+	t.Cleanup(func() {
+		if sqlDB, closeErr := db.DB(); closeErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
 	if err := db.AutoMigrate(models...); err != nil {
 		t.Fatalf("migrate seed table: %v", err)
 	}

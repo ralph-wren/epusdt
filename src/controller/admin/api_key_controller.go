@@ -9,6 +9,7 @@ import (
 	"github.com/GMWalletApp/epusdt/model/data"
 	"github.com/GMWalletApp/epusdt/model/mdb"
 	"github.com/GMWalletApp/epusdt/util/constant"
+	"github.com/GMWalletApp/epusdt/util/security"
 	"github.com/labstack/echo/v4"
 )
 
@@ -84,6 +85,10 @@ func (c *BaseAdminController) CreateApiKey(ctx echo.Context) error {
 	if err := c.ValidateStruct(ctx, req); err != nil {
 		return c.FailJson(ctx, err)
 	}
+	configuredNotifyURL, err := validateOptionalNotifyURL(req.NotifyUrl)
+	if err != nil {
+		return c.FailJson(ctx, err)
+	}
 
 	// Retry on unique-index violation: two concurrent creates could
 	// both see the same max PID from NextPid() and race on INSERT.
@@ -101,7 +106,7 @@ func (c *BaseAdminController) CreateApiKey(ctx echo.Context) error {
 			Pid:         strconv.Itoa(pid),
 			SecretKey:   secret,
 			IpWhitelist: req.IpWhitelist,
-			NotifyUrl:   req.NotifyUrl,
+			NotifyUrl:   configuredNotifyURL,
 			Status:      mdb.ApiKeyStatusEnable,
 		}
 		err = data.CreateApiKey(row)
@@ -164,12 +169,27 @@ func (c *BaseAdminController) UpdateApiKey(ctx echo.Context) error {
 		fields["ip_whitelist"] = *req.IpWhitelist
 	}
 	if req.NotifyUrl != nil {
-		fields["notify_url"] = *req.NotifyUrl
+		notifyURL, validateErr := validateOptionalNotifyURL(*req.NotifyUrl)
+		if validateErr != nil {
+			return c.FailJson(ctx, validateErr)
+		}
+		fields["notify_url"] = notifyURL
 	}
 	if err := data.UpdateApiKeyFields(id, fields); err != nil {
 		return c.FailJson(ctx, err)
 	}
 	return c.SucJson(ctx, nil)
+}
+
+func validateOptionalNotifyURL(raw string) (string, error) {
+	notifyURL := strings.TrimSpace(raw)
+	if notifyURL == "" {
+		return "", nil
+	}
+	if err := security.ValidatePublicHTTPURL(notifyURL); err != nil {
+		return "", constant.NotifyURLErr
+	}
+	return notifyURL, nil
 }
 
 // ChangeApiKeyStatus toggles enable/disable.

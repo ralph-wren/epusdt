@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,8 +15,23 @@ import (
 	"github.com/GMWalletApp/epusdt/model/dao"
 	"github.com/GMWalletApp/epusdt/model/data"
 	"github.com/GMWalletApp/epusdt/model/mdb"
+	"github.com/GMWalletApp/epusdt/util/http_client"
 	"github.com/GMWalletApp/epusdt/util/sign"
+	"github.com/go-resty/resty/v2"
 )
+
+func TestMain(m *testing.M) {
+	oldFactory := http_client.CallbackClientFactory
+	oldValidator := validateCallbackURL
+	http_client.CallbackClientFactory = func() *resty.Client {
+		return http_client.GetHttpClient()
+	}
+	validateCallbackURL = func(string) error { return nil }
+	code := m.Run()
+	http_client.CallbackClientFactory = oldFactory
+	validateCallbackURL = oldValidator
+	os.Exit(code)
+}
 
 func TestProcessExpiredOrdersExpiresWaitingOrdersAndReleasesLocks(t *testing.T) {
 	cleanup := testutil.SetupTestDatabases(t)

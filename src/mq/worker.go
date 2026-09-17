@@ -14,6 +14,7 @@ import (
 	"github.com/GMWalletApp/epusdt/model/service"
 	"github.com/GMWalletApp/epusdt/util/http_client"
 	"github.com/GMWalletApp/epusdt/util/log"
+	"github.com/GMWalletApp/epusdt/util/security"
 	"github.com/GMWalletApp/epusdt/util/sign"
 )
 
@@ -37,6 +38,8 @@ func resolveOrderApiKey(order *mdb.Orders) (*mdb.ApiKey, error) {
 const batchSize = 100
 
 const sqliteBusyRetryAttempts = 3
+
+var validateCallbackURL = security.ValidatePublicHTTPURL
 
 type expirableOrder struct {
 	ID             uint64  `gorm:"column:id"`
@@ -197,6 +200,10 @@ func sendOrderCallback(order *mdb.Orders) error {
 	if err != nil || apiKeyRow == nil || apiKeyRow.ID == 0 {
 		return errors.New("no api key row available for callback")
 	}
+	callbackURL, err := resolveCallbackURL(order, apiKeyRow)
+	if err != nil {
+		return err
+	}
 
 	switch {
 	case strings.EqualFold(order.PaymentType, mdb.PaymentTypeEpay):
@@ -205,11 +212,14 @@ func sendOrderCallback(order *mdb.Orders) error {
 			return err
 		}
 
-		epayResp, err := http_client.GetHttpClient().R().SetQueryParams(formData).Get(order.NotifyUrl)
+		epayResp, err := http_client.GetCallbackHTTPClient().R().SetQueryParams(formData).Get(callbackURL)
 		if err != nil {
 			return err
 		}
-		log.Sugar.Infof("[mq] epay notify_url response status: %d, body: %s", epayResp.StatusCode(), string(epayResp.Body()))
+		if int64(len(epayResp.Body())) > http_client.MaxCallbackResponseBytes {
+			return errors.New("callback response too large")
+		}
+		log.Sugar.Infof("[mq] epay notify_url response status: %d, body_bytes: %d", epayResp.StatusCode(), len(epayResp.Body()))
 		if epayResp.StatusCode() != http.StatusOK {
 			return errors.New(epayResp.Status())
 		}
@@ -219,7 +229,7 @@ func sendOrderCallback(order *mdb.Orders) error {
 
 	default:
 
-		client := http_client.GetHttpClient()
+		client := http_client.GetCallbackHTTPClient()
 		orderResp := response.OrderNotifyResponse{
 			Pid:                apiKeyRow.Pid,
 			TradeId:            order.TradeId,
@@ -240,9 +250,12 @@ func sendOrderCallback(order *mdb.Orders) error {
 		resp, err := client.R().
 			SetHeader("powered-by", "Epusdt(https://github.com/GMwalletApp/epusdt)").
 			SetBody(orderResp).
-			Post(order.NotifyUrl)
+			Post(callbackURL)
 		if err != nil {
 			return err
+		}
+		if int64(len(resp.Body())) > http_client.MaxCallbackResponseBytes {
+			return errors.New("callback response too large")
 		}
 		if resp.StatusCode() != http.StatusOK {
 			return errors.New(resp.Status())
@@ -253,6 +266,18 @@ func sendOrderCallback(order *mdb.Orders) error {
 	}
 
 	return nil
+}
+
+func resolveCallbackURL(order *mdb.Orders, apiKey *mdb.ApiKey) (string, error) {
+	callbackURL := strings.TrimSpace(order.NotifyUrl)
+	configuredURL := strings.TrimSpace(apiKey.NotifyUrl)
+	if configuredURL != "" && callbackURL != configuredURL {
+		return "", errors.New("order callback url does not match api key callback url")
+	}
+	if err := validateCallbackURL(callbackURL); err != nil {
+		return "", err
+	}
+	return callbackURL, nil
 }
 
 func isCallbackAck(body []byte) bool {

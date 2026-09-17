@@ -29,6 +29,12 @@ func ResetMdbTableInitForTest() {
 // available.
 func MdbTableInit() {
 	once.Do(func() {
+		if Mdb.Migrator().HasIndex(&mdb.Orders{}, "orders_order_id_uindex") {
+			if err := Mdb.Migrator().DropIndex(&mdb.Orders{}, "orders_order_id_uindex"); err != nil {
+				color.Red.Printf("[store_db] drop legacy global order id index err=%s\n", err)
+				return
+			}
+		}
 		migrations := []struct {
 			name  string
 			model interface{}
@@ -44,6 +50,7 @@ func MdbTableInit() {
 			{"ChainToken", &mdb.ChainToken{}},
 			{"RpcNode", &mdb.RpcNode{}},
 			{"ProviderOrder", &mdb.ProviderOrder{}},
+			{"ProcessedTransaction", &mdb.ProcessedTransaction{}},
 		}
 		for _, m := range migrations {
 			if err := Mdb.AutoMigrate(m.model); err != nil {
@@ -51,6 +58,7 @@ func MdbTableInit() {
 				return
 			}
 		}
+		backfillProcessedTransactions()
 
 		seedChains()
 		backfillRpcNodePurpose()
@@ -59,6 +67,29 @@ func MdbTableInit() {
 		seedDefaultSettings()
 		seedTelegramChannelFromSettings()
 	})
+}
+
+func backfillProcessedTransactions() {
+	var orders []mdb.Orders
+	if err := Mdb.Select("trade_id", "network", "block_transaction_id").
+		Where("status = ?", mdb.StatusPaySuccess).
+		Where("block_transaction_id <> ''").
+		Order("id asc").
+		Find(&orders).Error; err != nil {
+		color.Red.Printf("[store_db] load processed transaction backfill err=%s\n", err)
+		return
+	}
+	for _, order := range orders {
+		network, transactionID := mdb.NormalizeProcessedTransaction(order.Network, order.BlockTransactionId)
+		row := mdb.ProcessedTransaction{
+			Network:            network,
+			BlockTransactionID: transactionID,
+			TradeID:            order.TradeId,
+		}
+		if err := Mdb.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
+			color.Red.Printf("[store_db] backfill processed transaction trade_id=%s err=%s\n", order.TradeId, err)
+		}
+	}
 }
 
 // seedChains inserts the built-in networks as enabled rows. Uses

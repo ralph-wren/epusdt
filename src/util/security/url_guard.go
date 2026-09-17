@@ -33,6 +33,9 @@ func ValidatePublicHTTPURL(raw string) error {
 	if scheme != "http" && scheme != "https" {
 		return errors.New("url scheme must be http or https")
 	}
+	if parsed.User != nil {
+		return errors.New("url userinfo is not allowed")
+	}
 
 	host := strings.TrimSpace(parsed.Hostname())
 	if host == "" {
@@ -45,26 +48,63 @@ func ValidatePublicHTTPURL(raw string) error {
 		return fmt.Errorf("url host %q is not allowed", host)
 	}
 
-	if ip := net.ParseIP(host); ip != nil {
-		return validatePublicIP(host, ip)
+	_, err = resolvePublicIPs(context.Background(), host)
+	return err
+}
+
+// ResolvePublicTCPAddress resolves a callback destination once, verifies every
+// returned address is public, and returns an IP endpoint suitable for dialing.
+// Dialing this returned endpoint prevents a second DNS lookup from rebinding a
+// previously validated hostname to a private address.
+func ResolvePublicTCPAddress(ctx context.Context, address string) (string, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", fmt.Errorf("invalid callback address: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), dnsLookupTimeout)
+	addrs, err := resolvePublicIPs(ctx, host)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(addrs[0].String(), port), nil
+}
+
+func resolvePublicIPs(parent context.Context, host string) ([]net.IP, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil, errors.New("url host is required")
+	}
+	if strings.Contains(host, "%") {
+		return nil, fmt.Errorf("url host %q is not allowed", host)
+	}
+	if strings.TrimSuffix(strings.ToLower(host), ".") == "localhost" {
+		return nil, fmt.Errorf("url host %q is not allowed", host)
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if err := validatePublicIP(host, ip); err != nil {
+			return nil, err
+		}
+		return []net.IP{ip}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(parent, dnsLookupTimeout)
 	defer cancel()
 
 	addrs, err := lookupIPAddr(ctx, host)
 	if err != nil {
-		return fmt.Errorf("resolve url host %q: %w", host, err)
+		return nil, fmt.Errorf("resolve url host %q: %w", host, err)
 	}
 	if len(addrs) == 0 {
-		return fmt.Errorf("resolve url host %q: no addresses", host)
+		return nil, fmt.Errorf("resolve url host %q: no addresses", host)
 	}
+	result := make([]net.IP, 0, len(addrs))
 	for _, addr := range addrs {
 		if err := validatePublicIP(host, addr.IP); err != nil {
-			return err
+			return nil, err
 		}
+		result = append(result, addr.IP)
 	}
-	return nil
+	return result, nil
 }
 
 func validatePublicIP(host string, ip net.IP) error {

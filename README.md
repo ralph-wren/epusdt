@@ -103,6 +103,7 @@ Epusdt 已完成第三方安全审计。
 | 教程 | 说明 |
 |------|------|
 | [仓库内：epctl 安装脚本](wiki/EPCTL.md) | Linux 二进制安装、升级、状态查看与 Docker 验收脚本 |
+| [SQLite 迁移到 MySQL](wiki/MYSQL_MIGRATION.md) | 迁移现有数据，并把运行时锁和扫描游标切换到 MySQL |
 | [Docker 部署](https://epusdt.com/guide/installation/docker) | 推荐方式，一键启动 |
 | [宝塔面板部署](https://epusdt.com/guide/installation/aapanel) | 适合宝塔用户 |
 | [手动部署](https://epusdt.com/guide/installation/manual.html) | 完全手动控制 |

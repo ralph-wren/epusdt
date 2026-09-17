@@ -67,6 +67,20 @@ func setupTestEnv(t *testing.T) *echo.Echo {
 	if err := dao.RuntimeInit(); err != nil {
 		t.Fatalf("RuntimeInit: %v", err)
 	}
+	t.Cleanup(func() {
+		if dao.RuntimeDB != nil {
+			if sqlDB, err := dao.RuntimeDB.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}
+		if dao.Mdb != nil {
+			if sqlDB, err := dao.Mdb.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}
+		dao.RuntimeDB = nil
+		dao.Mdb = nil
+	})
 
 	// ensure tables exist (MdbTableInit uses sync.Once, so migrate directly)
 	dao.Mdb.AutoMigrate(
@@ -81,6 +95,7 @@ func setupTestEnv(t *testing.T) *echo.Echo {
 		&mdb.ChainToken{},
 		&mdb.RpcNode{},
 		&mdb.ProviderOrder{},
+		&mdb.ProcessedTransaction{},
 	)
 
 	// reset the settings cache so stale entries from a prior test don't leak

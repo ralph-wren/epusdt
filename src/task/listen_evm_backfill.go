@@ -247,6 +247,9 @@ func runEvmBackfillLoop(ctx context.Context, client *ethclient.Client, network, 
 func processEvmBackfillLogs(ctx context.Context, client *ethclient.Client, network, logPrefix string, logs []types.Log, isWatchedRecipient evmRecipientCheckerFunc) error {
 	headerCache := make(map[uint64]int64)
 	for _, vLog := range logs {
+		if vLog.Removed {
+			continue
+		}
 		if len(vLog.Topics) < 3 {
 			continue
 		}
@@ -265,7 +268,7 @@ func processEvmBackfillLogs(ctx context.Context, client *ethclient.Client, netwo
 			if err != nil {
 				return fmt.Errorf("fetch block header network=%s block=%d: %w", network, vLog.BlockNumber, err)
 			}
-			if header == nil || header.Time == 0 {
+			if header == nil || header.Time == 0 || header.Hash() != vLog.BlockHash {
 				return fmt.Errorf("missing block header timestamp network=%s block=%d", network, vLog.BlockNumber)
 			}
 			blockTsMs = int64(header.Time) * 1000

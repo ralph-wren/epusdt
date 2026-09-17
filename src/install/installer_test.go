@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -332,9 +333,13 @@ func TestInstallAPISubmitInitFailureKeepsInstallMode(t *testing.T) {
 
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
+	pathBlocker := filepath.Join(dir, "runtime-root-blocker")
+	if err := os.WriteFile(pathBlocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("create runtime path blocker: %v", err)
+	}
 
 	e, h := newInstallTestAPI(envPath)
-	payload := `{"app_name":"testapp","app_uri":"http://10.0.0.1:8000","http_bind_addr":"0.0.0.0","http_bind_port":8000,"runtime_root_path":"/dev/null/runtime","order_expiration_time":10,"order_notice_max_retry":1}`
+	payload := fmt.Sprintf(`{"app_name":"testapp","app_uri":"http://10.0.0.1:8000","http_bind_addr":"0.0.0.0","http_bind_port":8000,"runtime_root_path":%q,"order_expiration_time":10,"order_notice_max_retry":1}`, filepath.Join(pathBlocker, "runtime"))
 	rec := submitInstallRequest(t, e, payload)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500; body: %s", rec.Code, rec.Body.String())

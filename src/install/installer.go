@@ -458,7 +458,10 @@ db_type=sqlite
 sqlite_database_filename=
 sqlite_table_prefix=
 
-# sqlite runtime store config
+# runtime store config
+# sqlite: keep transaction locks and EVM cursors in a separate SQLite file
+# primary: keep them in the configured primary database (recommended for MySQL/PostgreSQL)
+runtime_db_type=sqlite
 runtime_sqlite_filename=epusdt-runtime.db
 
 # background scheduler config

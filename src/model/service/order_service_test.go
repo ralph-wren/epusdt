@@ -88,6 +88,22 @@ func TestCreateTransactionRejectsPrivateNotifyURL(t *testing.T) {
 	}
 }
 
+func TestResolveOrderNotifyURLUsesApiKeyConfiguration(t *testing.T) {
+	apiKey := &mdb.ApiKey{NotifyUrl: "https://93.184.216.34/fixed"}
+
+	got, err := resolveOrderNotifyURL("", apiKey)
+	if err != nil {
+		t.Fatalf("resolve configured notify url: %v", err)
+	}
+	if got != apiKey.NotifyUrl {
+		t.Fatalf("notify url = %q, want %q", got, apiKey.NotifyUrl)
+	}
+
+	if _, err = resolveOrderNotifyURL("https://93.184.216.34/attacker", apiKey); err != constant.NotifyURLErr {
+		t.Fatalf("mismatched notify url error = %v, want %v", err, constant.NotifyURLErr)
+	}
+}
+
 func TestCreateTransactionCreatesWaitSelectPlaceholderWithoutTokenNetwork(t *testing.T) {
 	cleanup := testutil.SetupTestDatabases(t)
 	defer cleanup()

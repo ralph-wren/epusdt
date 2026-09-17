@@ -35,6 +35,7 @@ func TestValidatePublicHTTPURLRejectsUnsafeURLs(t *testing.T) {
 		"://bad",
 		"ftp://example.com/file",
 		"https:///missing-host",
+		"https://user:password@example.com/notify",
 		"http://localhost/notify",
 		"http://localhost./notify",
 		"http://127.0.0.1/notify",
@@ -53,6 +54,16 @@ func TestValidatePublicHTTPURLRejectsUnsafeURLs(t *testing.T) {
 				t.Fatalf("ValidatePublicHTTPURL(%q) returned nil, want error", raw)
 			}
 		})
+	}
+}
+
+func TestResolvePublicTCPAddressRejectsPrivateResolution(t *testing.T) {
+	withLookupIPAddr(t, func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+	})
+
+	if _, err := ResolvePublicTCPAddress(context.Background(), "merchant.example:443"); err == nil {
+		t.Fatal("ResolvePublicTCPAddress returned nil, want error")
 	}
 }
 
