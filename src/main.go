@@ -88,20 +88,28 @@ func releaseStatic(fs embed.FS, target string) (string, error) {
 	return targetDir, nil
 }
 
-func main() {
+func run() (exitCode int) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			color.Error.Println("[Start Server Err!!!] ", recovered)
+			exitCode = 1
+		}
+	}()
+
 	wwwwPath, err := releaseStatic(wwwDir, "www")
 	if err != nil {
-		panic(err)
+		return 1
 	}
 
 	fmt.Println("www released to:", wwwwPath)
 
-	defer func() {
-		if err := recover(); err != nil {
-			color.Error.Println("[Start Server Err!!!] ", err)
-		}
-	}()
 	if err := command.Execute(); err != nil {
-		panic(err)
+		color.Error.Println("[Start Server Err!!!] ", err)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	os.Exit(run())
 }

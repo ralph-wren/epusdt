@@ -36,10 +36,10 @@ const (
 )
 
 type Orders struct {
-	TradeId            string  `gorm:"column:trade_id;uniqueIndex:orders_trade_id_uindex" json:"trade_id" example:"3nQ9pL2xV7sK1mR8cT4yB_aZ"`
-	OrderId            string  `gorm:"column:order_id;uniqueIndex:orders_api_key_order_id_uindex,priority:2" json:"order_id" example:"ORD20260416001"`
-	ParentTradeId      string  `gorm:"column:parent_trade_id;index:idx_orders_parent_trade_id;default:''" json:"parent_trade_id"`
-	BlockTransactionId string  `gorm:"index:orders_block_transaction_id_index;column:block_transaction_id" json:"block_transaction_id" example:"0xabc123..."`
+	TradeId            string  `gorm:"column:trade_id;size:64;uniqueIndex:orders_trade_id_uindex" json:"trade_id" example:"3nQ9pL2xV7sK1mR8cT4yB_aZ"`
+	OrderId            string  `gorm:"column:order_id;size:191;uniqueIndex:orders_api_key_order_id_uindex,priority:2" json:"order_id" example:"ORD20260416001"`
+	ParentTradeId      string  `gorm:"column:parent_trade_id;size:64;index:idx_orders_parent_trade_id;default:''" json:"parent_trade_id"`
+	BlockTransactionId string  `gorm:"column:block_transaction_id;size:191;index:orders_block_transaction_id_index" json:"block_transaction_id" example:"0xabc123..."`
 	Amount             float64 `gorm:"column:amount" json:"amount" example:"100.0000"`
 	Currency           string  `gorm:"column:currency" json:"currency" example:"CNY"`
 	ActualAmount       float64 `gorm:"column:actual_amount" json:"actual_amount" example:"14.2857"`
