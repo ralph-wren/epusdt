@@ -239,7 +239,7 @@ func defaultRateModeForSeed() string {
 	}
 
 	var apiSetting mdb.Setting
-	if err := Mdb.Where("key = ?", mdb.SettingKeyRateApiUrl).Limit(1).Find(&apiSetting).Error; err != nil {
+	if err := Mdb.Where("`key` = ?", mdb.SettingKeyRateApiUrl).Limit(1).Find(&apiSetting).Error; err != nil {
 		color.Red.Printf("[store_db] detect legacy rate api setting err=%s\n", err)
 	}
 	if strings.TrimSpace(apiSetting.Value) != "" || strings.TrimSpace(config.GetRateApiUrlFromEnv()) != "" {
@@ -287,7 +287,7 @@ func SyncTelegramChannelFromSettings() {
 		"system.telegram_abnormal_notice_enabled",
 	}
 	var rows []mdb.Setting
-	if err := Mdb.Where("key IN ?", keys).Find(&rows).Error; err != nil {
+	if err := Mdb.Where("`key` IN ?", keys).Find(&rows).Error; err != nil {
 		color.Red.Printf("[store_db] sync telegram channel: read settings err=%s\n", err)
 		return
 	}

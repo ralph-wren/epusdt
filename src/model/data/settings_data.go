@@ -171,7 +171,7 @@ func SetSetting(group, key, value, valueType string) error {
 
 // DeleteSetting removes a setting row and drops the cache entry.
 func DeleteSetting(key string) error {
-	if err := dao.Mdb.Where("key = ?", key).Delete(&mdb.Setting{}).Error; err != nil {
+	if err := dao.Mdb.Where("`key` = ?", key).Delete(&mdb.Setting{}).Error; err != nil {
 		return err
 	}
 	settingsCacheMu.Lock()
