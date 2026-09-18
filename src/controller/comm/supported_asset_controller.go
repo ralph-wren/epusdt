@@ -49,7 +49,7 @@ func buildSupportedAssets() ([]response.NetworkTokenSupport, error) {
 				continue
 			}
 			sym := strings.ToUpper(strings.TrimSpace(t.Symbol))
-			if sym == "" {
+			if sym != "USDT" {
 				continue
 			}
 			symbols = append(symbols, sym)

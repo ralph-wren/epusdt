@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -108,7 +109,28 @@ func RegisterRoute(e *echo.Echo) {
 
 		copyParams(ctx.QueryParams())
 
-		formParams, err := ctx.FormParams()
+		// Echo's form parser can reject otherwise valid browser form posts when
+		// an intermediary changes the content-type. Keep the raw body available
+		// and retry as a standard URL-encoded payload before failing the request.
+		var rawBody []byte
+		if ctx.Request().Method == http.MethodPost && ctx.Request().Body != nil {
+			rawBody, _ = io.ReadAll(ctx.Request().Body)
+			ctx.Request().Body = io.NopCloser(bytes.NewReader(rawBody))
+		}
+		var formParams url.Values
+		var err error
+		if ctx.Request().Method == http.MethodPost && len(rawBody) > 0 {
+			// Parse the browser's usual application/x-www-form-urlencoded body
+			// directly first. This avoids Echo's parser state being affected by a
+			// prior middleware that inspected the request body.
+			formParams, err = url.ParseQuery(string(rawBody))
+			if err != nil {
+				ctx.Request().Body = io.NopCloser(bytes.NewReader(rawBody))
+				formParams, err = ctx.FormParams()
+			}
+		} else {
+			formParams, err = ctx.FormParams()
+		}
 		if err != nil && ctx.Request().Method == http.MethodPost {
 			return comm.Ctrl.FailJson(ctx, constant.ParamsMarshalErr)
 		}
@@ -184,6 +206,17 @@ func RegisterRoute(e *echo.Echo) {
 			if network == "" {
 				network = data.GetSettingString(mdb.SettingKeyEpayDefaultNetwork, "")
 			}
+		}
+		// This EPUSDT instance is the new-api crypto gateway and is intentionally
+		// USDT-only. Keep the network configurable, but reject any other asset at
+		// the gateway edge so a forged or stale checkout request cannot create a
+		// USDC order. The check is deliberately after selector resolution so both
+		// legacy `type=alipay` and explicit `type=USDC.SOLANA` requests are covered.
+		if token == "" && network != "" {
+			return comm.Ctrl.FailJson(ctx, constant.ParamsMarshalErr)
+		}
+		if token != "" && !strings.EqualFold(token, "usdt") {
+			return comm.Ctrl.FailJson(ctx, constant.ParamsMarshalErr)
 		}
 		currency := strings.TrimSpace(getString(params, "currency"))
 		if currency == "" {

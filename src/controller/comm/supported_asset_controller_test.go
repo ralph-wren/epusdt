@@ -39,7 +39,7 @@ func TestBuildSupportedAssetsIncludesConfiguredAptosTokens(t *testing.T) {
 	if supports[0].Network != mdb.NetworkAptos {
 		t.Fatalf("network = %q, want %q", supports[0].Network, mdb.NetworkAptos)
 	}
-	want := []string{"MOVEUSD", "USDT"}
+	want := []string{"USDT"}
 	if len(supports[0].Tokens) != len(want) {
 		t.Fatalf("tokens = %#v, want %#v", supports[0].Tokens, want)
 	}
