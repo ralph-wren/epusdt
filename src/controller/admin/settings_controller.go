@@ -30,7 +30,7 @@ import (
 //     rate.adjust_percent    (float)  — rate adjustment percentage
 //     rate.okx_c2c_enabled   (bool)   — use OKX C2C rate feed
 //     rate.binance_c2c_enabled (bool) — use Binance C2C quotes for USDT/CNY payments
-//     rate.binance_c2c_cache_ttl_seconds (int) — Binance C2C quote cache TTL (10-86400, default 60)
+//     rate.binance_c2c_cache_ttl_seconds (int) — Binance C2C quote cache TTL (10-86400, default 180)
 //
 //   - group=epay:
 //     epay.default_token     (string) — default token for EPAY submit.php, e.g. "usdt"; ignored when a supported type=token.network selector is supplied; empty allows status=4 placeholders when request token/network are also absent

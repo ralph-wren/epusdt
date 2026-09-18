@@ -59,6 +59,7 @@ type OrderWithSubListResponse struct {
 // @Router       /admin/api/v1/orders [get]
 func (c *BaseAdminController) ListOrders(ctx echo.Context) error {
 	f := parseOrderFilter(ctx)
+	f.ParentOnly = true
 	rows, total, err := data.ListOrders(f)
 	if err != nil {
 		return c.FailJson(ctx, err)
@@ -242,6 +243,7 @@ func (c *BaseAdminController) ResendCallback(ctx echo.Context) error {
 // @Router       /admin/api/v1/orders/export [get]
 func (c *BaseAdminController) ExportOrders(ctx echo.Context) error {
 	f := parseOrderFilter(ctx)
+	f.ParentOnly = true
 	f.Page = 1
 	f.PageSize = 10000
 	rows, _, err := data.ListOrders(f)

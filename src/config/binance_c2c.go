@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultBinanceC2CSearchURL       = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
-	defaultBinanceC2CCacheTTLSeconds = 60
+	defaultBinanceC2CCacheTTLSeconds = 180
 	binanceC2CQuoteCount             = 10
 	binanceC2CMaximumRateDeviation   = 0.10
 	binanceC2CMinimumReasonablePrice = 1.0

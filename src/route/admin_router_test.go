@@ -2282,6 +2282,91 @@ func TestAdminNotificationChannels_TelegramFrontendPayloadCompatibility(t *testi
 
 // ─── Orders list-with-sub ─────────────────────────────────────────────────────
 
+func TestAdminBusinessViewsExcludeSubOrdersFromTotalsAndTopLevelList(t *testing.T) {
+	e, token := setupAdminTestEnv(t)
+	now := time.Now()
+	parent := &mdb.Orders{
+		TradeId:        "trade-business-parent",
+		OrderId:        "order-business-parent",
+		Amount:         10,
+		Currency:       "CNY",
+		ActualAmount:   1.48,
+		ReceiveAddress: "TParentBusinessAddress",
+		Token:          "USDT",
+		Network:        mdb.NetworkTron,
+		Status:         mdb.StatusPaySuccess,
+	}
+	if err := dao.Mdb.Create(parent).Error; err != nil {
+		t.Fatalf("create parent order: %v", err)
+	}
+	child := &mdb.Orders{
+		TradeId:            "trade-business-child",
+		OrderId:            "order-business-child",
+		ParentTradeId:      parent.TradeId,
+		Amount:             10,
+		Currency:           "CNY",
+		ActualAmount:       1.48,
+		ReceiveAddress:     "0xchildbusinessaddress",
+		Token:              "USDT",
+		Network:            mdb.NetworkAptos,
+		Status:             mdb.StatusPaySuccess,
+		BlockTransactionId: "0xchild-business-transaction",
+	}
+	if err := dao.Mdb.Create(child).Error; err != nil {
+		t.Fatalf("create child order: %v", err)
+	}
+	if err := dao.Mdb.Model(parent).Update("pay_by_sub_id", child.ID).Error; err != nil {
+		t.Fatalf("link paid child to parent: %v", err)
+	}
+
+	listResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/orders", token))
+	listData, _ := listResp["data"].(map[string]interface{})
+	rows, _ := listData["list"].([]interface{})
+	if len(rows) != 1 {
+		t.Fatalf("top-level order list length = %d, want 1: %#v", len(rows), rows)
+	}
+	row, _ := rows[0].(map[string]interface{})
+	if row["trade_id"] != parent.TradeId {
+		t.Fatalf("top-level order trade_id = %v, want %s", row["trade_id"], parent.TradeId)
+	}
+	if total, _ := listData["total"].(float64); total != 1 {
+		t.Fatalf("top-level order total = %v, want 1", total)
+	}
+
+	overviewResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/dashboard/overview?range=today", token))
+	overview, _ := overviewResp["data"].(map[string]interface{})
+	if got, _ := overview["order_count"].(float64); got != 1 {
+		t.Fatalf("overview order_count = %v, want 1", got)
+	}
+	if got, _ := overview["volume"].(float64); math.Abs(got-1.48) > 1e-9 {
+		t.Fatalf("overview volume = %v, want 1.48", got)
+	}
+	if got, _ := overview["total_asset"].(float64); math.Abs(got-1.48) > 1e-9 {
+		t.Fatalf("overview total_asset = %v, want 1.48", got)
+	}
+
+	trendResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/dashboard/revenue-trend?range=today", token))
+	trendRows, _ := trendResp["data"].([]interface{})
+	wantHour := now.Format("2006-01-02 15:00")
+	found := false
+	for _, item := range trendRows {
+		bucket, _ := item.(map[string]interface{})
+		if bucket["day"] != wantHour {
+			continue
+		}
+		found = true
+		if got, _ := bucket["order_count"].(float64); got != 1 {
+			t.Fatalf("revenue trend order_count = %v, want 1", got)
+		}
+		if got, _ := bucket["actual_amount"].(float64); math.Abs(got-1.48) > 1e-9 {
+			t.Fatalf("revenue trend actual_amount = %v, want 1.48", got)
+		}
+	}
+	if !found {
+		t.Fatalf("revenue trend missing current hour %s: %#v", wantHour, trendRows)
+	}
+}
+
 // TestAdminOrders_ListWithSubExcludesSubOrdersFromTopLevel verifies that
 // sub-orders do NOT appear at the top level of /orders/list-with-sub and are
 // instead nested inside their parent's sub_orders array.

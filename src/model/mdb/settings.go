@@ -72,7 +72,7 @@ const (
 	SettingDefaultRateForcedRateList = `{"cny":{"usdt":0.14705882352941177,"usdc":0.14705882352941177}}`
 	SettingDefaultRateMode           = "fixed"
 	SettingDefaultRateCacheTTL       = 300
-	SettingDefaultBinanceC2CCacheTTL = 60
+	SettingDefaultBinanceC2CCacheTTL = 180
 )
 
 type Setting struct {

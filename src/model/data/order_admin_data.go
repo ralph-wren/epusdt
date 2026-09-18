@@ -56,7 +56,7 @@ func ListOrders(f OrderListFilter) ([]mdb.Orders, int64, error) {
 func buildOrderListQuery(f OrderListFilter) *gorm.DB {
 	tx := dao.Mdb.Model(&mdb.Orders{})
 	if f.ParentOnly {
-		tx = tx.Where("parent_trade_id = ?", "")
+		tx = topLevelOrders(tx)
 	}
 	if f.Status > 0 {
 		tx = tx.Where("status = ?", f.Status)
@@ -83,6 +83,13 @@ func buildOrderListQuery(f OrderListFilter) *gorm.DB {
 	return tx
 }
 
+// topLevelOrders limits business-facing order views and aggregates to merchant
+// orders. Network/token switch child orders remain available for audit, but
+// must not be counted as a second payment for the same merchant order.
+func topLevelOrders(tx *gorm.DB) *gorm.DB {
+	return tx.Where("(parent_trade_id = ? OR parent_trade_id IS NULL)", "")
+}
+
 // CountOrdersByStatus returns how many orders exist in each status.
 // Used by the dashboard overview card.
 func CountOrdersByStatus() (map[int]int64, error) {
@@ -91,7 +98,7 @@ func CountOrdersByStatus() (map[int]int64, error) {
 		Total  int64
 	}
 	var rows []row
-	err := dao.Mdb.Model(&mdb.Orders{}).
+	err := topLevelOrders(dao.Mdb.Model(&mdb.Orders{})).
 		Select("status, COUNT(*) AS total").
 		Group("status").
 		Scan(&rows).Error

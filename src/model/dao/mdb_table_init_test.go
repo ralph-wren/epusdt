@@ -227,7 +227,7 @@ func TestSeedDefaultSettingsIncludesBinanceC2CDefaults(t *testing.T) {
 		valueType string
 	}{
 		mdb.SettingKeyRateBinanceC2CEnabled:  {value: "false", valueType: mdb.SettingTypeBool},
-		mdb.SettingKeyRateBinanceC2CCacheTTL: {value: "60", valueType: mdb.SettingTypeInt},
+		mdb.SettingKeyRateBinanceC2CCacheTTL: {value: "180", valueType: mdb.SettingTypeInt},
 	}
 	for key, want := range wants {
 		var row mdb.Setting
