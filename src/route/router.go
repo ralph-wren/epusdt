@@ -206,15 +206,20 @@ func RegisterRoute(e *echo.Echo) {
 			if network == "" {
 				network = data.GetSettingString(mdb.SettingKeyEpayDefaultNetwork, "")
 			}
+			// Legacy EasyPay clients (including new-api) send type=alipay
+			// without a token field. If a default network is configured, this
+			// USDT-only gateway can safely fill the missing asset. Keep both
+			// fields empty when no defaults exist so the checkout selector still
+			// works as before.
+			if token == "" && network != "" {
+				token = "usdt"
+			}
 		}
 		// This EPUSDT instance is the new-api crypto gateway and is intentionally
 		// USDT-only. Keep the network configurable, but reject any other asset at
 		// the gateway edge so a forged or stale checkout request cannot create a
 		// USDC order. The check is deliberately after selector resolution so both
 		// legacy `type=alipay` and explicit `type=USDC.SOLANA` requests are covered.
-		if token == "" && network != "" {
-			return comm.Ctrl.FailJson(ctx, constant.ParamsMarshalErr)
-		}
 		if token != "" && !strings.EqualFold(token, "usdt") {
 			return comm.Ctrl.FailJson(ctx, constant.ParamsMarshalErr)
 		}

@@ -1689,7 +1689,7 @@ func TestEpaySubmitPhpRejectsUnsupportedSelectorType(t *testing.T) {
 	}
 }
 
-func TestEpaySubmitPhpRejectsPartialResolvedTokenNetwork(t *testing.T) {
+func TestEpaySubmitPhpDefaultsMissingLegacyTokenToUSDT(t *testing.T) {
 	e := setupTestEnv(t)
 
 	if err := data.SetSetting(mdb.SettingGroupEpay, mdb.SettingKeyEpayDefaultToken, "", mdb.SettingTypeString); err != nil {
@@ -1713,12 +1713,16 @@ func TestEpaySubmitPhpRejectsPartialResolvedTokenNetwork(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	resp := parseResp(t, rec)
-	if got := int(resp["status_code"].(float64)); got != 10009 {
-		t.Fatalf("status_code = %d, want 10009", got)
+	tradeID := strings.TrimPrefix(rec.Header().Get("Location"), "/pay/checkout-counter/")
+	order, err := data.GetOrderInfoByTradeId(tradeID)
+	if err != nil {
+		t.Fatalf("reload legacy default order: %v", err)
+	}
+	if order.Token != "USDT" || order.Network != mdb.NetworkTron || order.ReceiveAddress != "TTestTronAddress001" {
+		t.Fatalf("legacy default order fields = token %q network %q address %q", order.Token, order.Network, order.ReceiveAddress)
 	}
 }
 
