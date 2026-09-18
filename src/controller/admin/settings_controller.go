@@ -29,6 +29,8 @@ import (
 //     rate.cache_ttl_seconds (int)    — automatic cache TTL in seconds (10-86400, default 300)
 //     rate.adjust_percent    (float)  — rate adjustment percentage
 //     rate.okx_c2c_enabled   (bool)   — use OKX C2C rate feed
+//     rate.binance_c2c_enabled (bool) — use Binance C2C quotes for USDT/CNY payments
+//     rate.binance_c2c_cache_ttl_seconds (int) — Binance C2C quote cache TTL (10-86400, default 60)
 //
 //   - group=epay:
 //     epay.default_token     (string) — default token for EPAY submit.php, e.g. "usdt"; ignored when a supported type=token.network selector is supplied; empty allows status=4 placeholders when request token/network are also absent
@@ -102,7 +104,7 @@ func (c *BaseAdminController) ListSettings(ctx echo.Context) error {
 // @Description  Supported groups: brand, rate, system, epay, okpay.
 // @Description  epay group keys: epay.default_token (e.g. "usdt" or "ton", ignored when a supported type=token.network selector is supplied, empty allows status=4 placeholders), epay.default_currency (e.g. "cny", still applies when a supported type selector is supplied, empty falls back to cny), epay.default_network (e.g. "tron" or "ton", ignored when a supported type=token.network selector is supplied, empty allows status=4 placeholders).
 // @Description  okpay group keys: okpay.enabled, okpay.shop_id, okpay.shop_token, okpay.api_url, okpay.callback_url, okpay.return_url, okpay.timeout_seconds, okpay.allow_tokens.
-// @Description  rate group keys: rate.mode (fixed|auto, default fixed), rate.cache_ttl_seconds (10-86400, default 300), rate.forced_rate_list (JSON map, e.g. {"cny":{"usdt":0.14635,"ton":0.5}}; base/coin keys are normalized to lowercase; empty is restored to the built-in CNY USDT/USDC default), rate.api_url (optional; non-empty value must be a public http/https URL), rate.adjust_percent, rate.okx_c2c_enabled.
+// @Description  rate group keys: rate.mode (fixed|auto, default fixed), rate.cache_ttl_seconds (10-86400, default 300), rate.forced_rate_list (JSON map, e.g. {"cny":{"usdt":0.14635,"ton":0.5}}; base/coin keys are normalized to lowercase; empty is restored to the built-in CNY USDT/USDC default), rate.api_url (optional; non-empty value must be a public http/https URL), rate.adjust_percent, rate.okx_c2c_enabled, rate.binance_c2c_enabled, rate.binance_c2c_cache_ttl_seconds.
 // @Description  brand group keys: brand.checkout_name, brand.logo_url, brand.site_title, brand.success_copy, brand.support_url, brand.background_color, brand.background_image_url. Legacy aliases brand.site_name, brand.page_title and brand.pay_success_text are also supported.
 // @Description  system group keys: system.order_expiration_time, system.amount_precision (int, 2-6, default 2), system.log_level (debug|info|warn|error, default error).
 // @Tags         Admin Settings
@@ -161,6 +163,14 @@ func (c *BaseAdminController) UpsertSettings(ctx echo.Context) error {
 			item.Type = mdb.SettingTypeString
 		}
 		if key == mdb.SettingKeyRateCacheTTLSeconds {
+			item.Group = mdb.SettingGroupRate
+			item.Type = mdb.SettingTypeInt
+		}
+		if key == mdb.SettingKeyRateBinanceC2CEnabled {
+			item.Group = mdb.SettingGroupRate
+			item.Type = mdb.SettingTypeBool
+		}
+		if key == mdb.SettingKeyRateBinanceC2CCacheTTL {
 			item.Group = mdb.SettingGroupRate
 			item.Type = mdb.SettingTypeInt
 		}
@@ -259,6 +269,24 @@ func normalizeAndValidateSettingItem(group, key, value string) (string, error) {
 		}
 		return mode, nil
 	case mdb.SettingKeyRateCacheTTLSeconds:
+		if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupRate {
+			return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupRate)
+		}
+		ttl, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || ttl < config.MinRateCacheTTLSeconds || ttl > config.MaxRateCacheTTLSeconds {
+			return value, fmt.Errorf("%s must be between %d and %d", key, config.MinRateCacheTTLSeconds, config.MaxRateCacheTTLSeconds)
+		}
+		return strconv.Itoa(ttl), nil
+	case mdb.SettingKeyRateBinanceC2CEnabled:
+		if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupRate {
+			return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupRate)
+		}
+		enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return value, fmt.Errorf("%s must be true or false", key)
+		}
+		return strconv.FormatBool(enabled), nil
+	case mdb.SettingKeyRateBinanceC2CCacheTTL:
 		if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupRate {
 			return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupRate)
 		}

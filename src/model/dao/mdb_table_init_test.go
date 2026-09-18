@@ -216,6 +216,30 @@ func TestSeedDefaultSettingsIncludesRateModeAndTTL(t *testing.T) {
 	}
 }
 
+func TestSeedDefaultSettingsIncludesBinanceC2CDefaults(t *testing.T) {
+	db := setupSeedSettingsTestDB(t)
+	Mdb = db
+
+	seedDefaultSettings()
+
+	wants := map[string]struct {
+		value     string
+		valueType string
+	}{
+		mdb.SettingKeyRateBinanceC2CEnabled:  {value: "false", valueType: mdb.SettingTypeBool},
+		mdb.SettingKeyRateBinanceC2CCacheTTL: {value: "60", valueType: mdb.SettingTypeInt},
+	}
+	for key, want := range wants {
+		var row mdb.Setting
+		if err := Mdb.Where("`key` = ?", key).Take(&row).Error; err != nil {
+			t.Fatalf("load %s seed: %v", key, err)
+		}
+		if row.Group != mdb.SettingGroupRate || row.Value != want.value || row.Type != want.valueType {
+			t.Fatalf("%s seed = group:%q value:%q type:%q", key, row.Group, row.Value, row.Type)
+		}
+	}
+}
+
 func TestSeedDefaultSettingsKeepsFreshInstallFixedWithConfiguredEnvAPI(t *testing.T) {
 	db := setupSeedSettingsTestDB(t)
 	Mdb = db

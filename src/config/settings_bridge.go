@@ -59,3 +59,17 @@ func settingsRateCacheTTLSeconds() string {
 	}
 	return SettingsGetString("rate.cache_ttl_seconds")
 }
+
+func settingsRateBinanceC2CEnabled() string {
+	if SettingsGetString == nil {
+		return ""
+	}
+	return SettingsGetString("rate.binance_c2c_enabled")
+}
+
+func settingsRateBinanceC2CCacheTTLSeconds() string {
+	if SettingsGetString == nil {
+		return ""
+	}
+	return SettingsGetString("rate.binance_c2c_cache_ttl_seconds")
+}

@@ -45,6 +45,8 @@ const (
 	SettingKeyRateForcedRateList       = "rate.forced_rate_list"
 	SettingKeyRateAdjustPercent        = "rate.adjust_percent"
 	SettingKeyRateOkxC2cEnabled        = "rate.okx_c2c_enabled"
+	SettingKeyRateBinanceC2CEnabled    = "rate.binance_c2c_enabled"
+	SettingKeyRateBinanceC2CCacheTTL   = "rate.binance_c2c_cache_ttl_seconds"
 	SettingKeyRateApiUrl               = "rate.api_url"
 	SettingKeyRateMode                 = "rate.mode"
 	SettingKeyRateCacheTTLSeconds      = "rate.cache_ttl_seconds"
@@ -70,6 +72,7 @@ const (
 	SettingDefaultRateForcedRateList = `{"cny":{"usdt":0.14705882352941177,"usdc":0.14705882352941177}}`
 	SettingDefaultRateMode           = "fixed"
 	SettingDefaultRateCacheTTL       = 300
+	SettingDefaultBinanceC2CCacheTTL = 60
 )
 
 type Setting struct {

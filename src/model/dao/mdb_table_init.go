@@ -209,6 +209,8 @@ func seedDefaultSettings() {
 		{Group: mdb.SettingGroupRate, Key: mdb.SettingKeyRateForcedRateList, Value: mdb.SettingDefaultRateForcedRateList, Type: mdb.SettingTypeJSON},
 		{Group: mdb.SettingGroupRate, Key: mdb.SettingKeyRateMode, Value: defaultRateMode, Type: mdb.SettingTypeString},
 		{Group: mdb.SettingGroupRate, Key: mdb.SettingKeyRateCacheTTLSeconds, Value: strconv.Itoa(mdb.SettingDefaultRateCacheTTL), Type: mdb.SettingTypeInt},
+		{Group: mdb.SettingGroupRate, Key: mdb.SettingKeyRateBinanceC2CEnabled, Value: "false", Type: mdb.SettingTypeBool},
+		{Group: mdb.SettingGroupRate, Key: mdb.SettingKeyRateBinanceC2CCacheTTL, Value: strconv.Itoa(mdb.SettingDefaultBinanceC2CCacheTTL), Type: mdb.SettingTypeInt},
 		{Group: mdb.SettingGroupEpay, Key: mdb.SettingKeyEpayDefaultToken, Value: "", Type: mdb.SettingTypeString},
 		{Group: mdb.SettingGroupEpay, Key: mdb.SettingKeyEpayDefaultCurrency, Value: "cny", Type: mdb.SettingTypeString},
 		{Group: mdb.SettingGroupEpay, Key: mdb.SettingKeyEpayDefaultNetwork, Value: "", Type: mdb.SettingTypeString},

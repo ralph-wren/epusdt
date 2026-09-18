@@ -178,7 +178,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 		return nil, err
 	}
 
-	rate := config.GetRateForCoin(strings.ToLower(token), strings.ToLower(currency))
+	rate := config.GetPaymentRateForCoin(strings.ToLower(token), strings.ToLower(currency), decimalPayAmount.InexactFloat64())
 	if rate <= 0 {
 		return nil, constant.RateAmountErr
 	}
@@ -652,7 +652,7 @@ func SwitchNetwork(req *request.SwitchNetworkRequest) (*response.CheckoutCounter
 	}
 
 	// 6. Calculate amount for the new network
-	rate := config.GetRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency))
+	rate := config.GetPaymentRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency), parent.Amount)
 	if rate <= 0 {
 		return nil, constant.RateAmountErr
 	}
@@ -730,7 +730,7 @@ func completeWaitSelectOrder(parent *mdb.Orders, token string, network string) (
 		return nil, err
 	}
 
-	rate := config.GetRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency))
+	rate := config.GetPaymentRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency), parent.Amount)
 	if rate <= 0 {
 		return nil, constant.RateAmountErr
 	}
@@ -806,7 +806,7 @@ func buildCheckoutResponse(order *mdb.Orders) *response.CheckoutCounterResponse 
 }
 
 func completeWaitSelectOkPayOrder(parent *mdb.Orders, token string) (*response.CheckoutCounterResponse, error) {
-	rate := config.GetRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency))
+	rate := config.GetPaymentRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency), parent.Amount)
 	if rate <= 0 {
 		return nil, constant.RateAmountErr
 	}
@@ -951,7 +951,7 @@ func switchToOkPay(parent *mdb.Orders, token string) (*response.CheckoutCounterR
 		return nil, constant.SubOrderLimitExceeded
 	}
 
-	rate := config.GetRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency))
+	rate := config.GetPaymentRateForCoin(strings.ToLower(token), strings.ToLower(parent.Currency), parent.Amount)
 	if rate <= 0 {
 		return nil, constant.RateAmountErr
 	}

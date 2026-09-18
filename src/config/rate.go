@@ -297,6 +297,7 @@ func ResetRateCacheRuntime() {
 	rateCacheMu.Lock()
 	rateCacheMemory = make(map[string]RateCacheSnapshot)
 	rateCacheMu.Unlock()
+	resetBinanceC2CCache()
 }
 
 func getForcedRateForCoin(coin string, base string) float64 {
