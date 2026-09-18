@@ -2329,8 +2329,34 @@ func TestAdminBusinessViewsExcludeSubOrdersFromTotalsAndTopLevelList(t *testing.
 	if row["trade_id"] != parent.TradeId {
 		t.Fatalf("top-level order trade_id = %v, want %s", row["trade_id"], parent.TradeId)
 	}
+	if row["network"] != mdb.NetworkAptos {
+		t.Fatalf("top-level order network = %v, want settled child network %s", row["network"], mdb.NetworkAptos)
+	}
+	if row["receive_address"] != child.ReceiveAddress {
+		t.Fatalf("top-level order receive_address = %v, want settled child address %s", row["receive_address"], child.ReceiveAddress)
+	}
+	if row["block_transaction_id"] != child.BlockTransactionId {
+		t.Fatalf("top-level order block_transaction_id = %v, want settled child transaction %s", row["block_transaction_id"], child.BlockTransactionId)
+	}
 	if total, _ := listData["total"].(float64); total != 1 {
 		t.Fatalf("top-level order total = %v, want 1", total)
+	}
+
+	aptosResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/orders?network=aptos", token))
+	aptosData, _ := aptosResp["data"].(map[string]interface{})
+	if total, _ := aptosData["total"].(float64); total != 1 {
+		t.Fatalf("aptos-filtered order total = %v, want 1", total)
+	}
+	tronResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/orders?network=tron", token))
+	tronData, _ := tronResp["data"].(map[string]interface{})
+	if total, _ := tronData["total"].(float64); total != 0 {
+		t.Fatalf("tron-filtered order total = %v, want 0", total)
+	}
+
+	detailResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/orders/"+parent.TradeId, token))
+	detail, _ := detailResp["data"].(map[string]interface{})
+	if detail["network"] != mdb.NetworkAptos {
+		t.Fatalf("order detail network = %v, want settled child network %s", detail["network"], mdb.NetworkAptos)
 	}
 
 	overviewResp := assertOK(t, doGetAdmin(e, "/admin/api/v1/dashboard/overview?range=today", token))

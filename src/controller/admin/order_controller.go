@@ -91,6 +91,9 @@ func (c *BaseAdminController) GetOrder(ctx echo.Context) error {
 	if order.ID == 0 {
 		return c.FailJson(ctx, constant.OrderNotExists)
 	}
+	if err = data.HydrateSettledPaymentDetails(order); err != nil {
+		return c.FailJson(ctx, err)
+	}
 	return c.SucJson(ctx, order)
 }
 

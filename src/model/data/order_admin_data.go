@@ -47,38 +47,47 @@ func ListOrders(f OrderListFilter) ([]mdb.Orders, int64, error) {
 		size = 200
 	}
 	var rows []mdb.Orders
-	err := tx.Order("id DESC").
+	err := tx.Select("orders.*").Order("orders.id DESC").
 		Offset((page - 1) * size).Limit(size).
 		Find(&rows).Error
-	return rows, total, err
+	if err != nil {
+		return nil, 0, err
+	}
+	if err = HydrateSettledPaymentDetailsForOrders(rows); err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 func buildOrderListQuery(f OrderListFilter) *gorm.DB {
-	tx := dao.Mdb.Model(&mdb.Orders{})
+	tx := dao.Mdb.Model(&mdb.Orders{}).
+		Joins("LEFT JOIN orders AS paid_sub ON paid_sub.id = orders.pay_by_sub_id")
 	if f.ParentOnly {
 		tx = topLevelOrders(tx)
 	}
 	if f.Status > 0 {
-		tx = tx.Where("status = ?", f.Status)
+		tx = tx.Where("orders.status = ?", f.Status)
 	}
 	if f.Network != "" {
-		tx = tx.Where("network = ?", strings.ToLower(f.Network))
+		tx = tx.Where("COALESCE(NULLIF(paid_sub.network, ''), orders.network) = ?", strings.ToLower(f.Network))
 	}
 	if f.Token != "" {
-		tx = tx.Where("token = ?", strings.ToUpper(f.Token))
+		tx = tx.Where("COALESCE(NULLIF(paid_sub.token, ''), orders.token) = ?", strings.ToUpper(f.Token))
 	}
 	if f.Address != "" {
-		tx = tx.Where("receive_address = ?", f.Address)
+		tx = tx.Where("COALESCE(NULLIF(paid_sub.receive_address, ''), orders.receive_address) = ?", f.Address)
 	}
 	if f.Keyword != "" {
 		kw := "%" + strings.TrimSpace(f.Keyword) + "%"
-		tx = tx.Where("trade_id LIKE ? OR order_id LIKE ? OR block_transaction_id LIKE ?", kw, kw, kw)
+		tx = tx.Where(`orders.trade_id LIKE ? OR orders.order_id LIKE ? OR
+            orders.block_transaction_id LIKE ? OR paid_sub.trade_id LIKE ? OR paid_sub.block_transaction_id LIKE ?`,
+			kw, kw, kw, kw, kw)
 	}
 	if f.StartAt != nil {
-		tx = tx.Where("created_at >= ?", *f.StartAt)
+		tx = tx.Where("orders.created_at >= ?", *f.StartAt)
 	}
 	if f.EndAt != nil {
-		tx = tx.Where("created_at <= ?", *f.EndAt)
+		tx = tx.Where("orders.created_at <= ?", *f.EndAt)
 	}
 	return tx
 }
@@ -87,7 +96,67 @@ func buildOrderListQuery(f OrderListFilter) *gorm.DB {
 // orders. Network/token switch child orders remain available for audit, but
 // must not be counted as a second payment for the same merchant order.
 func topLevelOrders(tx *gorm.DB) *gorm.DB {
-	return tx.Where("(parent_trade_id = ? OR parent_trade_id IS NULL)", "")
+	return tx.Where("(orders.parent_trade_id = ? OR orders.parent_trade_id IS NULL)", "")
+}
+
+// HydrateSettledPaymentDetails replaces the payment-facing fields of a parent
+// order with the child order that actually settled it. The stored parent row is
+// intentionally left untouched so its original payment target remains
+// available for audit.
+func HydrateSettledPaymentDetails(order *mdb.Orders) error {
+	if order == nil || order.PayBySubId == 0 {
+		return nil
+	}
+	rows := []mdb.Orders{*order}
+	if err := HydrateSettledPaymentDetailsForOrders(rows); err != nil {
+		return err
+	}
+	*order = rows[0]
+	return nil
+}
+
+// HydrateSettledPaymentDetailsForOrders is the batch variant used by admin
+// lists and dashboard recent orders to avoid one child-order query per row.
+func HydrateSettledPaymentDetailsForOrders(orders []mdb.Orders) error {
+	ids := make([]uint64, 0, len(orders))
+	seen := make(map[uint64]struct{}, len(orders))
+	for i := range orders {
+		id := orders[i].PayBySubId
+		if id == 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	var settled []mdb.Orders
+	if err := dao.Mdb.Where("id IN ?", ids).Find(&settled).Error; err != nil {
+		return err
+	}
+	byID := make(map[uint64]mdb.Orders, len(settled))
+	for _, row := range settled {
+		byID[row.ID] = row
+	}
+	for i := range orders {
+		paid, ok := byID[orders[i].PayBySubId]
+		if !ok {
+			continue
+		}
+		orders[i].ActualAmount = paid.ActualAmount
+		orders[i].QuoteRate = paid.QuoteRate
+		orders[i].ReceiveAddress = paid.ReceiveAddress
+		orders[i].Token = paid.Token
+		orders[i].Network = paid.Network
+		orders[i].BlockTransactionId = paid.BlockTransactionId
+		orders[i].PayProvider = paid.PayProvider
+	}
+	return nil
 }
 
 // CountOrdersByStatus returns how many orders exist in each status.
@@ -99,8 +168,8 @@ func CountOrdersByStatus() (map[int]int64, error) {
 	}
 	var rows []row
 	err := topLevelOrders(dao.Mdb.Model(&mdb.Orders{})).
-		Select("status, COUNT(*) AS total").
-		Group("status").
+		Select("orders.status, COUNT(*) AS total").
+		Group("orders.status").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err

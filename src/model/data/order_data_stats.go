@@ -339,10 +339,16 @@ func RecentOrders(limit int) ([]mdb.Orders, error) {
 	}
 	var rows []mdb.Orders
 	err := topLevelOrders(dao.Mdb.Model(&mdb.Orders{})).
-		Order("id DESC").
+		Order("orders.id DESC").
 		Limit(limit).
 		Find(&rows).Error
-	return rows, err
+	if err != nil {
+		return nil, err
+	}
+	if err = HydrateSettledPaymentDetailsForOrders(rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // CountEnabledChains counts chains where Enabled=true.

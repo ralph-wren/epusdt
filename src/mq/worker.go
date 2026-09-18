@@ -196,6 +196,12 @@ func processCallback(tradeID string) {
 }
 
 func sendOrderCallback(order *mdb.Orders) error {
+	callbackOrder := *order
+	if err := data.HydrateSettledPaymentDetails(&callbackOrder); err != nil {
+		return err
+	}
+	order = &callbackOrder
+
 	apiKeyRow, err := resolveOrderApiKey(order)
 	if err != nil || apiKeyRow == nil || apiKeyRow.ID == 0 {
 		return errors.New("no api key row available for callback")
