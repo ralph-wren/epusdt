@@ -779,10 +779,18 @@ func buildCheckoutResponse(order *mdb.Orders) *response.CheckoutCounterResponse 
 	if isEPayOrder(order) {
 		paymentType = mdb.PaymentTypeEpay
 	}
+	rate := 0.0
+	if order.ActualAmount > 0 {
+		// The actual amount can be incremented when an address/amount pair is
+		// already locked. Derive the effective quote from the persisted order so
+		// the cashier never shows a rate different from the payable amount.
+		rate = order.Amount / order.ActualAmount
+	}
 	return &response.CheckoutCounterResponse{
 		TradeId:        order.TradeId,
 		Amount:         order.Amount,
 		ActualAmount:   order.ActualAmount,
+		Rate:           rate,
 		Token:          order.Token,
 		Currency:       order.Currency,
 		ReceiveAddress: order.ReceiveAddress,
