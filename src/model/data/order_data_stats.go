@@ -51,6 +51,11 @@ func statsBucketExprForDialect(dialect, column string, hourly bool) (string, err
 			return fmt.Sprintf("TO_CHAR(%s, 'YYYY-MM-DD HH24:00')", column), nil
 		}
 		return fmt.Sprintf("TO_CHAR(%s, 'YYYY-MM-DD')", column), nil
+	case "mysql":
+		if hourly {
+			return fmt.Sprintf("DATE_FORMAT(%s, '%%Y-%%m-%%d %%H:00')", column), nil
+		}
+		return fmt.Sprintf("DATE_FORMAT(%s, '%%Y-%%m-%%d')", column), nil
 	default:
 		return "", fmt.Errorf("unsupported database dialect for dashboard stats: %s", dialect)
 	}

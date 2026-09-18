@@ -72,6 +72,17 @@ func TestStatsBucketExprForDialect(t *testing.T) {
 			hourly:  true,
 			want:    "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00')",
 		},
+		{
+			name:    "mysql daily",
+			dialect: "mysql",
+			want:    "DATE_FORMAT(created_at, '%Y-%m-%d')",
+		},
+		{
+			name:    "mysql hourly",
+			dialect: "mysql",
+			hourly:  true,
+			want:    "DATE_FORMAT(created_at, '%Y-%m-%d %H:00')",
+		},
 	}
 
 	for _, tt := range tests {
@@ -88,8 +99,8 @@ func TestStatsBucketExprForDialect(t *testing.T) {
 }
 
 func TestStatsBucketExprRejectsUnsupportedDialect(t *testing.T) {
-	if _, err := statsBucketExprForDialect("mysql", "created_at", false); err == nil {
-		t.Fatal("expected unsupported mysql dialect error")
+	if _, err := statsBucketExprForDialect("oracle", "created_at", false); err == nil {
+		t.Fatal("expected unsupported oracle dialect error")
 	}
 }
 
