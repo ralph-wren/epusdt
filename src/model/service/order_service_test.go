@@ -213,6 +213,21 @@ func TestCreateTransactionAssignsIncrementedAmountsAndLocks(t *testing.T) {
 		t.Fatalf("unexpected tokens: %s, %s", resp1.Token, resp2.Token)
 	}
 
+	firstOrder, err := data.GetOrderInfoByTradeId(resp1.TradeId)
+	if err != nil {
+		t.Fatalf("load first order: %v", err)
+	}
+	secondOrder, err := data.GetOrderInfoByTradeId(resp2.TradeId)
+	if err != nil {
+		t.Fatalf("load second order: %v", err)
+	}
+	if got := buildCheckoutResponse(firstOrder).Rate; got != 1 {
+		t.Fatalf("first locked quote rate = %v, want 1", got)
+	}
+	if got := buildCheckoutResponse(secondOrder).Rate; got != 1 {
+		t.Fatalf("second locked quote rate = %v, want 1", got)
+	}
+
 	tradeID1, err := data.GetTradeIdByWalletAddressAndAmountAndToken("tron", resp1.ReceiveAddress, resp1.Token, resp1.ActualAmount)
 	if err != nil {
 		t.Fatalf("get first runtime lock: %v", err)

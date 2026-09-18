@@ -43,6 +43,7 @@ type Orders struct {
 	Amount             float64 `gorm:"column:amount" json:"amount" example:"100.0000"`
 	Currency           string  `gorm:"column:currency" json:"currency" example:"CNY"`
 	ActualAmount       float64 `gorm:"column:actual_amount" json:"actual_amount" example:"14.2857"`
+	QuoteRate          float64 `gorm:"column:quote_rate;default:0" json:"quote_rate" example:"7.0000"`
 	ReceiveAddress     string  `gorm:"column:receive_address" json:"receive_address" example:"TTestTronAddress001"`
 	Token              string  `gorm:"column:token" json:"token" example:"USDT"`
 	Network            string  `gorm:"column:network" json:"network" example:"tron"`

@@ -213,6 +213,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 		Amount:         payAmount,
 		Currency:       currency,
 		ActualAmount:   availableAmount,
+		QuoteRate:      quoteRateFromPaymentRate(rate),
 		ReceiveAddress: availableAddress,
 		Token:          token,
 		Network:        network,
@@ -690,6 +691,7 @@ func SwitchNetwork(req *request.SwitchNetworkRequest) (*response.CheckoutCounter
 		Amount:          parent.Amount,
 		Currency:        parent.Currency,
 		ActualAmount:    availableAmount,
+		QuoteRate:       quoteRateFromPaymentRate(rate),
 		ReceiveAddress:  availableAddress,
 		Token:           token,
 		Network:         network,
@@ -757,7 +759,7 @@ func completeWaitSelectOrder(parent *mdb.Orders, token string, network string) (
 		return nil, constant.NotAvailableAmountErr
 	}
 
-	updated, err := data.CompleteWaitSelectOrder(parent.TradeId, network, token, availableAddress, availableAmount)
+	updated, err := data.CompleteWaitSelectOrder(parent.TradeId, network, token, availableAddress, availableAmount, quoteRateFromPaymentRate(rate))
 	if err != nil {
 		_ = data.UnLockTransactionByTradeId(parent.TradeId)
 		return nil, err
@@ -774,16 +776,23 @@ func completeWaitSelectOrder(parent *mdb.Orders, token string, network string) (
 	return buildCheckoutResponse(order), nil
 }
 
+func quoteRateFromPaymentRate(paymentRate float64) float64 {
+	if paymentRate <= 0 {
+		return 0
+	}
+	return 1 / paymentRate
+}
+
 func buildCheckoutResponse(order *mdb.Orders) *response.CheckoutCounterResponse {
 	paymentType := mdb.PaymentTypeGmpay
 	if isEPayOrder(order) {
 		paymentType = mdb.PaymentTypeEpay
 	}
-	rate := 0.0
-	if order.ActualAmount > 0 {
+	rate := order.QuoteRate
+	if rate <= 0 && order.ActualAmount > 0 {
 		// The actual amount can be incremented when an address/amount pair is
-		// already locked. Derive the effective quote from the persisted order so
-		// the cashier never shows a rate different from the payable amount.
+		// already locked. Legacy orders do not have a persisted quote, so keep
+		// their historical amount-derived display as a compatibility fallback.
 		rate = order.Amount / order.ActualAmount
 	}
 	return &response.CheckoutCounterResponse{
@@ -857,7 +866,7 @@ func completeWaitSelectOkPayOrder(parent *mdb.Orders, token string) (*response.C
 		_ = data.MarkProviderOrderFailed(parent.TradeId, mdb.PaymentProviderOkPay)
 		return nil, err
 	}
-	updated, err := data.CompleteWaitSelectOkPayOrderWithTransaction(finalizeTx, parent.TradeId, token, amount)
+	updated, err := data.CompleteWaitSelectOkPayOrderWithTransaction(finalizeTx, parent.TradeId, token, amount, quoteRateFromPaymentRate(rate))
 	if err != nil {
 		finalizeTx.Rollback()
 		_ = data.MarkProviderOrderFailed(parent.TradeId, mdb.PaymentProviderOkPay)
@@ -979,6 +988,7 @@ func switchToOkPay(parent *mdb.Orders, token string) (*response.CheckoutCounterR
 		Amount:          parent.Amount,
 		Currency:        parent.Currency,
 		ActualAmount:    amount,
+		QuoteRate:       quoteRateFromPaymentRate(rate),
 		ReceiveAddress:  "OKPAY",
 		Token:           token,
 		Network:         mdb.NetworkTron,
