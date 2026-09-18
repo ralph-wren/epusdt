@@ -18,12 +18,11 @@ import (
 const (
 	defaultBinanceC2CSearchURL       = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
 	defaultBinanceC2CCacheTTLSeconds = 60
-	binanceC2CQuoteCount             = 3
-	binanceC2CMinimumMonthlyOrders   = 20
-	binanceC2CMinimumCompletionRate  = 0.90
+	binanceC2CQuoteCount             = 10
 	binanceC2CMaximumRateDeviation   = 0.10
 	binanceC2CMinimumReasonablePrice = 1.0
 	binanceC2CMaximumReasonablePrice = 20.0
+	binanceC2CCacheKey               = "usdt-cny-buy"
 )
 
 type binanceC2CCacheEntry struct {
@@ -39,7 +38,6 @@ type binanceC2CSearchRequest struct {
 	Asset         string   `json:"asset"`
 	TradeType     string   `json:"tradeType"`
 	Fiat          string   `json:"fiat"`
-	TransAmount   string   `json:"transAmount"`
 }
 
 type binanceC2CSearchResponse struct {
@@ -48,14 +46,8 @@ type binanceC2CSearchResponse struct {
 	Success bool   `json:"success"`
 	Data    []struct {
 		Adv struct {
-			Price                       string `json:"price"`
-			MinSingleTransAmount        string `json:"minSingleTransAmount"`
-			DynamicMaxSingleTransAmount string `json:"dynamicMaxSingleTransAmount"`
+			Price string `json:"price"`
 		} `json:"adv"`
-		Advertiser struct {
-			MonthOrderCount int     `json:"monthOrderCount"`
-			MonthFinishRate float64 `json:"monthFinishRate"`
-		} `json:"advertiser"`
 	} `json:"data"`
 }
 
@@ -67,7 +59,7 @@ var (
 )
 
 // GetPaymentRateForCoin returns coin units per one base-currency unit. When
-// enabled, USDT/CNY payments use an amount-matched Binance C2C BUY quote and
+// enabled, USDT/CNY payments use the median of the latest Binance C2C BUY quotes and
 // retain the existing configured rate as a safety fallback.
 func GetPaymentRateForCoin(coin, base string, fiatAmount float64) float64 {
 	coin = normalizeRateKey(coin)
@@ -77,7 +69,7 @@ func GetPaymentRateForCoin(coin, base string, fiatAmount float64) float64 {
 		return fallbackRate
 	}
 
-	price, err := getBinanceC2CPrice(fiatAmount)
+	price, err := getBinanceC2CPrice()
 	if err != nil {
 		log.Printf("binance C2C rate unavailable, using configured fallback: %s", err)
 		return fallbackRate
@@ -106,24 +98,23 @@ func getBinanceC2CCacheTTLSeconds() int {
 	return ttl
 }
 
-func getBinanceC2CPrice(fiatAmount float64) (float64, error) {
-	cacheKey := strconv.FormatFloat(fiatAmount, 'f', 2, 64)
+func getBinanceC2CPrice() (float64, error) {
 	now := rateNow()
-	if price, ok := loadBinanceC2CCache(cacheKey, now); ok {
+	if price, ok := loadBinanceC2CCache(binanceC2CCacheKey, now); ok {
 		return price, nil
 	}
 
-	value, err, _ := binanceC2CRequests.Do(cacheKey, func() (interface{}, error) {
+	value, err, _ := binanceC2CRequests.Do(binanceC2CCacheKey, func() (interface{}, error) {
 		now := rateNow()
-		if price, ok := loadBinanceC2CCache(cacheKey, now); ok {
+		if price, ok := loadBinanceC2CCache(binanceC2CCacheKey, now); ok {
 			return price, nil
 		}
-		price, err := fetchBinanceC2CPrice(cacheKey, fiatAmount)
+		price, err := fetchBinanceC2CPrice()
 		if err != nil {
 			return 0.0, err
 		}
 		binanceC2CCacheMu.Lock()
-		binanceC2CCache[cacheKey] = binanceC2CCacheEntry{
+		binanceC2CCache[binanceC2CCacheKey] = binanceC2CCacheEntry{
 			price:     price,
 			expiresAt: now.Add(time.Duration(getBinanceC2CCacheTTLSeconds()) * time.Second),
 		}
@@ -136,15 +127,14 @@ func getBinanceC2CPrice(fiatAmount float64) (float64, error) {
 	return value.(float64), nil
 }
 
-func fetchBinanceC2CPrice(transAmount string, fiatAmount float64) (float64, error) {
+func fetchBinanceC2CPrice() (float64, error) {
 	payload := binanceC2CSearchRequest{
-		Page:        1,
-		Rows:        10,
-		PayTypes:    []string{},
-		Asset:       "USDT",
-		TradeType:   "BUY",
-		Fiat:        "CNY",
-		TransAmount: transAmount,
+		Page:      1,
+		Rows:      10,
+		PayTypes:  []string{},
+		Asset:     "USDT",
+		TradeType: "BUY",
+		Fiat:      "CNY",
 	}
 	resp, err := http_client.GetHttpClient().R().
 		SetHeader("Accept", "application/json").
@@ -172,15 +162,7 @@ func fetchBinanceC2CPrice(transAmount string, fiatAmount float64) (float64, erro
 	prices := make([]float64, 0, binanceC2CQuoteCount)
 	for _, row := range result.Data {
 		price, priceErr := strconv.ParseFloat(strings.TrimSpace(row.Adv.Price), 64)
-		minAmount, minErr := strconv.ParseFloat(strings.TrimSpace(row.Adv.MinSingleTransAmount), 64)
-		maxAmount, maxErr := strconv.ParseFloat(strings.TrimSpace(row.Adv.DynamicMaxSingleTransAmount), 64)
-		if priceErr != nil || minErr != nil || maxErr != nil || price < binanceC2CMinimumReasonablePrice || price > binanceC2CMaximumReasonablePrice {
-			continue
-		}
-		if fiatAmount < minAmount || fiatAmount > maxAmount {
-			continue
-		}
-		if row.Advertiser.MonthOrderCount < binanceC2CMinimumMonthlyOrders || row.Advertiser.MonthFinishRate < binanceC2CMinimumCompletionRate {
+		if priceErr != nil || price < binanceC2CMinimumReasonablePrice || price > binanceC2CMaximumReasonablePrice {
 			continue
 		}
 		prices = append(prices, price)
@@ -189,10 +171,11 @@ func fetchBinanceC2CPrice(transAmount string, fiatAmount float64) (float64, erro
 		}
 	}
 	if len(prices) < binanceC2CQuoteCount {
-		return 0, fmt.Errorf("Binance C2C returned only %d eligible amount-matched quotes", len(prices))
+		return 0, fmt.Errorf("Binance C2C returned only %d valid quotes", len(prices))
 	}
 	sort.Float64s(prices)
-	return prices[len(prices)/2], nil
+	middle := len(prices) / 2
+	return (prices[middle-1] + prices[middle]) / 2, nil
 }
 
 func loadBinanceC2CCache(key string, now time.Time) (float64, bool) {
