@@ -9,7 +9,7 @@ if ('serviceWorker' in navigator) {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=cashier-rate-v3', {
+      .register('/sw.js?v=cashier-rate-v4', {
         scope: '/',
         updateViaCache: 'none',
       })
