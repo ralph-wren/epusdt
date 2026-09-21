@@ -1528,6 +1528,64 @@ func TestAdminSettings_ListAndUpsert(t *testing.T) {
 	assertOK(t, rec)
 }
 
+func TestAdminSettings_BinanceCredentialsAreMaskedAndBlankUpdateKeepsSecret(t *testing.T) {
+	e, token := setupAdminTestEnv(t)
+
+	first := doPutAdmin(e, "/admin/api/v1/settings", map[string]interface{}{
+		"items": []map[string]interface{}{
+			{"group": "binance", "key": "binance.deposit_monitor_enabled", "value": true, "type": "bool"},
+			{"group": "binance", "key": "binance.api_key", "value": "test-api-key-123456", "type": "string"},
+			{"group": "binance", "key": "binance.secret_key", "value": "test-secret-key-123456", "type": "string"},
+			{"group": "binance", "key": "binance.poll_interval_seconds", "value": 15, "type": "int"},
+			{"group": "binance", "key": "binance.lookback_minutes", "value": 30, "type": "int"},
+		},
+	}, token)
+	assertOK(t, first)
+
+	listed := assertOK(t, doGetAdmin(e, "/admin/api/v1/settings?group=binance", token))
+	rows, _ := listed["data"].([]interface{})
+	configured := map[string]bool{}
+	for _, raw := range rows {
+		item, _ := raw.(map[string]interface{})
+		key, _ := item["key"].(string)
+		if key != "binance.api_key" && key != "binance.secret_key" {
+			continue
+		}
+		if item["value"] != "" {
+			t.Fatalf("%s leaked value %v", key, item["value"])
+		}
+		if item["configured"] != true {
+			t.Fatalf("%s configured = %v, want true", key, item["configured"])
+		}
+		configured[key] = true
+	}
+	if !configured["binance.api_key"] || !configured["binance.secret_key"] {
+		t.Fatalf("masked credential rows missing: %#v", rows)
+	}
+	if strings.Contains(listedResponseBody(listed), "test-api-key") || strings.Contains(listedResponseBody(listed), "test-secret-key") {
+		t.Fatal("settings response contains Binance credential material")
+	}
+
+	blank := doPutAdmin(e, "/admin/api/v1/settings", map[string]interface{}{
+		"items": []map[string]interface{}{
+			{"group": "binance", "key": "binance.api_key", "value": "", "type": "string"},
+			{"group": "binance", "key": "binance.secret_key", "value": "", "type": "string"},
+		},
+	}, token)
+	assertOK(t, blank)
+	if got := data.GetSettingString("binance.api_key", ""); got != "test-api-key-123456" {
+		t.Fatalf("blank api key update replaced stored value: %q", got)
+	}
+	if got := data.GetSettingString("binance.secret_key", ""); got != "test-secret-key-123456" {
+		t.Fatalf("blank secret update replaced stored value: %q", got)
+	}
+}
+
+func listedResponseBody(resp map[string]interface{}) string {
+	b, _ := json.Marshal(resp)
+	return string(b)
+}
+
 func TestAdminSettings_ForcedRateListValidation(t *testing.T) {
 	e, token := setupAdminTestEnv(t)
 
