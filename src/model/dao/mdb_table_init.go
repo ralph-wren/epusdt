@@ -219,6 +219,11 @@ func seedDefaultSettings() {
 		{Group: mdb.SettingGroupOkPay, Key: mdb.SettingKeyOkPayCallbackURL, Value: okPayCallbackURL, Type: mdb.SettingTypeString},
 		{Group: mdb.SettingGroupOkPay, Key: mdb.SettingKeyOkPayTimeoutSeconds, Value: "10", Type: mdb.SettingTypeInt},
 		{Group: mdb.SettingGroupOkPay, Key: mdb.SettingKeyOkPayAllowTokens, Value: "USDT,TRX", Type: mdb.SettingTypeString},
+		{Group: mdb.SettingGroupBinance, Key: mdb.SettingKeyBinanceDepositMonitorEnabled, Value: "false", Type: mdb.SettingTypeBool},
+		{Group: mdb.SettingGroupBinance, Key: mdb.SettingKeyBinanceAPIKey, Value: "", Type: mdb.SettingTypeString},
+		{Group: mdb.SettingGroupBinance, Key: mdb.SettingKeyBinanceSecretKey, Value: "", Type: mdb.SettingTypeString},
+		{Group: mdb.SettingGroupBinance, Key: mdb.SettingKeyBinancePollIntervalSeconds, Value: strconv.Itoa(mdb.SettingDefaultBinancePollInterval), Type: mdb.SettingTypeInt},
+		{Group: mdb.SettingGroupBinance, Key: mdb.SettingKeyBinanceLookbackMinutes, Value: strconv.Itoa(mdb.SettingDefaultBinanceLookback), Type: mdb.SettingTypeInt},
 	}
 	if err := Mdb.Clauses(clause.OnConflict{DoNothing: true}).Create(&defaults).Error; err != nil {
 		color.Red.Printf("[store_db] seed default settings err=%s\n", err)

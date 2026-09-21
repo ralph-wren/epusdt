@@ -42,6 +42,8 @@ var (
 type orderProcessingOptions struct {
 	allowedStatuses       []int
 	parentAllowedStatuses []int
+	claimNetwork          string
+	claimTransactionID    string
 }
 
 // apiKeyID safely extracts the primary key from an ApiKey row.
@@ -276,8 +278,17 @@ func orderProcessing(req *request.OrderProcessingRequest, opts orderProcessingOp
 	gOrderProcessingLock.Lock()
 	defer gOrderProcessingLock.Unlock()
 
+	claimNetwork := strings.TrimSpace(opts.claimNetwork)
+	if claimNetwork == "" {
+		claimNetwork = req.Network
+	}
+	claimTransactionID := strings.TrimSpace(opts.claimTransactionID)
+	if claimTransactionID == "" {
+		claimTransactionID = req.BlockTransactionId
+	}
+
 	tx := dao.Mdb.Begin()
-	reserved, err := data.ReserveProcessedTransactionWithTransaction(tx, req.Network, req.BlockTransactionId, req.TradeId)
+	reserved, err := data.ReserveProcessedTransactionWithTransaction(tx, claimNetwork, claimTransactionID, req.TradeId)
 	if err != nil {
 		tx.Rollback()
 		return err

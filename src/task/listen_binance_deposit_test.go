@@ -5,11 +5,21 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/GMWalletApp/epusdt/model/mdb"
 )
+
+type failingBinanceTransport struct{}
+
+func (failingBinanceTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("transport failed")
+}
 
 func TestBinanceDepositClientSignsAndParsesHistory(t *testing.T) {
 	fixedNow := time.Date(2026, 9, 21, 7, 0, 0, 0, time.UTC)
@@ -68,6 +78,20 @@ func TestBinanceDepositClientSignsAndParsesHistory(t *testing.T) {
 	}
 }
 
+func TestBinanceDepositClientDoesNotLeakSignedURLInErrors(t *testing.T) {
+	client := newBinanceDepositClient("https://api.binance.com", &http.Client{Transport: failingBinanceTransport{}}, "sensitive-api-key", "sensitive-secret", time.Now)
+	_, err := client.ListDeposits(context.Background(), time.Now().Add(-time.Minute), time.Now(), 0, 1000)
+	if err == nil {
+		t.Fatal("ListDeposits error = nil")
+	}
+	message := err.Error()
+	for _, forbidden := range []string{"signature=", "sensitive-api-key", "sensitive-secret", "api.binance.com"} {
+		if strings.Contains(message, forbidden) {
+			t.Fatalf("error leaked %q: %s", forbidden, message)
+		}
+	}
+}
+
 func TestLoadBinanceDepositConfigDisabledWithoutCredentials(t *testing.T) {
 	config := loadBinanceDepositConfig()
 	if config.Enabled {
@@ -78,15 +102,28 @@ func TestLoadBinanceDepositConfigDisabledWithoutCredentials(t *testing.T) {
 	}
 }
 
+func TestPollBinanceDepositsSkipsDisabledOrIncompleteConfiguration(t *testing.T) {
+	configs := []binanceDepositConfig{
+		{Enabled: false, APIKey: "unused", SecretKey: "unused"},
+		{Enabled: true, APIKey: "", SecretKey: "missing-api-key"},
+		{Enabled: true, APIKey: "missing-secret", SecretKey: ""},
+	}
+	for _, config := range configs {
+		if err := pollBinanceDeposits(context.Background(), config); err != nil {
+			t.Fatalf("pollBinanceDeposits(%#v): %v", config, err)
+		}
+	}
+}
+
 func TestMapBinanceDepositNetwork(t *testing.T) {
 	tests := map[string]string{
-		"TRX":     "tron",
-		"ETH":     "ethereum",
-		"BSC":     "bsc",
-		"SOL":     "solana",
-		"POLYGON": "polygon",
-		"APTOS":   "aptos",
-		"TON":     "ton",
+		"TRX":     mdb.NetworkTron,
+		"ETH":     mdb.NetworkEthereum,
+		"BSC":     mdb.NetworkBsc,
+		"SOL":     mdb.NetworkSolana,
+		"POLYGON": mdb.NetworkPolygon,
+		"APTOS":   mdb.NetworkAptos,
+		"TON":     mdb.NetworkTon,
 	}
 	for input, want := range tests {
 		if got, ok := mapBinanceDepositNetwork(input); !ok || got != want {
@@ -95,5 +132,46 @@ func TestMapBinanceDepositNetwork(t *testing.T) {
 	}
 	if got, ok := mapBinanceDepositNetwork("unknown"); ok || got != "" {
 		t.Fatalf("unknown network = (%q, %v), want empty false", got, ok)
+	}
+}
+
+type fakeBinanceDepositLister struct {
+	pages   map[int][]binanceDeposit
+	offsets []int
+}
+
+func (f *fakeBinanceDepositLister) ListDeposits(_ context.Context, _, _ time.Time, offset, _ int) ([]binanceDeposit, error) {
+	f.offsets = append(f.offsets, offset)
+	return f.pages[offset], nil
+}
+
+func TestPollBinanceDepositsFiltersPagesAndFallsBackToInsertTime(t *testing.T) {
+	firstPage := make([]binanceDeposit, binanceDepositPageLimit)
+	firstPage[0] = binanceDeposit{ID: "valid", Amount: "75.08", Coin: "USDT", Network: "TRX", Address: "TAddress", InsertTime: 1000, Status: 1}
+	firstPage[1] = binanceDeposit{ID: "pending", Amount: "1", Coin: "USDT", Network: "TRX", Address: "TAddress", InsertTime: 1000, Status: 0}
+	firstPage[2] = binanceDeposit{ID: "wrong-coin", Amount: "1", Coin: "USDC", Network: "TRX", Address: "TAddress", InsertTime: 1000, Status: 1}
+	firstPage[3] = binanceDeposit{ID: "unknown-network", Amount: "1", Coin: "USDT", Network: "UNKNOWN", Address: "TAddress", InsertTime: 1000, Status: 1}
+	firstPage[4] = binanceDeposit{ID: "bad-amount", Amount: "not-a-number", Coin: "USDT", Network: "TRX", Address: "TAddress", InsertTime: 1000, Status: 1}
+	client := &fakeBinanceDepositLister{pages: map[int][]binanceDeposit{
+		0:                       firstPage,
+		binanceDepositPageLimit: {},
+	}}
+
+	var processed []binanceDeposit
+	err := pollBinanceDepositsWithClient(context.Background(), binanceDepositConfig{Lookback: 30 * time.Minute}, client, time.UnixMilli(5000), func(id, network, address, token string, amount float64, paidAtMs int64) (bool, error) {
+		processed = append(processed, binanceDeposit{ID: id, Network: network, Address: address, Coin: token, Amount: "75.08", CompleteTime: paidAtMs})
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("pollBinanceDepositsWithClient: %v", err)
+	}
+	if len(client.offsets) != 2 || client.offsets[0] != 0 || client.offsets[1] != binanceDepositPageLimit {
+		t.Fatalf("offsets = %v", client.offsets)
+	}
+	if len(processed) != 1 {
+		t.Fatalf("processed = %#v", processed)
+	}
+	if processed[0].ID != "valid" || processed[0].Network != mdb.NetworkTron || processed[0].CompleteTime != 1000 {
+		t.Fatalf("processed deposit = %#v", processed[0])
 	}
 }

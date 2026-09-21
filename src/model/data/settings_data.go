@@ -280,6 +280,26 @@ func GetOkPayAllowTokens() []string {
 	return out
 }
 
+func GetBinanceDepositMonitorEnabled() bool {
+	return GetSettingBool(mdb.SettingKeyBinanceDepositMonitorEnabled, false)
+}
+
+func GetBinanceAPIKey() string {
+	return strings.TrimSpace(GetSettingString(mdb.SettingKeyBinanceAPIKey, ""))
+}
+
+func GetBinanceSecretKey() string {
+	return strings.TrimSpace(GetSettingString(mdb.SettingKeyBinanceSecretKey, ""))
+}
+
+func GetBinancePollIntervalSeconds() int {
+	return GetSettingInt(mdb.SettingKeyBinancePollIntervalSeconds, mdb.SettingDefaultBinancePollInterval)
+}
+
+func GetBinanceLookbackMinutes() int {
+	return GetSettingInt(mdb.SettingKeyBinanceLookbackMinutes, mdb.SettingDefaultBinanceLookback)
+}
+
 // ListSettingsByGroup returns all rows for a given group (empty group = all),
 // excluding any keys in sensitiveSettingKeys.
 func ListSettingsByGroup(group string) ([]mdb.Setting, error) {

@@ -47,6 +47,13 @@ import (
 //     okpay.timeout_seconds  (int)    — outbound OkPay API timeout in seconds
 //     okpay.allow_tokens     (string) — comma-separated allowed tokens, e.g. "USDT,TRX"
 //
+//   - group=binance:
+//     binance.deposit_monitor_enabled (bool)   — poll Binance deposit history for account-internal and on-chain deposits
+//     binance.api_key                 (string) — Binance read-only API key; list responses return an empty value plus configured status
+//     binance.secret_key              (string) — Binance secret key; list responses return an empty value plus configured status
+//     binance.poll_interval_seconds   (int)    — polling interval, 5-300 seconds (default 15)
+//     binance.lookback_minutes        (int)    — deposit-history lookback window, 1-1440 minutes (default 30)
+//
 //   - group=brand:
 //     brand.checkout_name    (string) — cashier display name (preferred)
 //     brand.logo_url         (string) — logo image URL
@@ -64,10 +71,15 @@ import (
 //     system.amount_precision      (int) — payment amount precision, 2-6 decimals (default 2)
 //     system.log_level             (string) — runtime log level: debug, info, warn, error (default error)
 type SettingUpsertItem struct {
-	Group string      `json:"group" enums:"brand,rate,system,epay,okpay" example:"epay"`
+	Group string      `json:"group" enums:"brand,rate,system,epay,okpay,binance" example:"epay"`
 	Key   string      `json:"key" example:"epay.default_network"`
 	Value interface{} `json:"value"`
 	Type  string      `json:"type" enums:"string,int,bool,json" example:"string"`
+}
+
+type settingListItem struct {
+	mdb.Setting
+	Configured *bool `json:"configured,omitempty"`
 }
 
 // SettingsUpsertRequest is the payload for batch upserting settings.
@@ -93,7 +105,17 @@ func (c *BaseAdminController) ListSettings(ctx echo.Context) error {
 	if err != nil {
 		return c.FailJson(ctx, err)
 	}
-	return c.SucJson(ctx, rows)
+	out := make([]settingListItem, 0, len(rows))
+	for _, row := range rows {
+		item := settingListItem{Setting: row}
+		if isBinanceCredentialSetting(row.Key) {
+			configured := strings.TrimSpace(row.Value) != ""
+			item.Value = ""
+			item.Configured = &configured
+		}
+		out = append(out, item)
+	}
+	return c.SucJson(ctx, out)
 }
 
 // UpsertSettings batch-inserts / updates rows. Each item is treated
@@ -150,6 +172,10 @@ func (c *BaseAdminController) UpsertSettings(ctx echo.Context) error {
 			out = append(out, errorResult(key, constant.SettingItemErr))
 			continue
 		}
+		if isBinanceCredentialSetting(key) && strings.TrimSpace(value) == "" {
+			out = append(out, result{Key: key, OK: true})
+			continue
+		}
 		if key == mdb.SettingKeyAmountPrecision {
 			item.Group = mdb.SettingGroupSystem
 			item.Type = mdb.SettingTypeInt
@@ -177,6 +203,17 @@ func (c *BaseAdminController) UpsertSettings(ctx echo.Context) error {
 		if key == mdb.SettingKeySystemLogLevel {
 			item.Group = mdb.SettingGroupSystem
 			item.Type = mdb.SettingTypeString
+		}
+		switch key {
+		case mdb.SettingKeyBinanceDepositMonitorEnabled:
+			item.Group = mdb.SettingGroupBinance
+			item.Type = mdb.SettingTypeBool
+		case mdb.SettingKeyBinanceAPIKey, mdb.SettingKeyBinanceSecretKey:
+			item.Group = mdb.SettingGroupBinance
+			item.Type = mdb.SettingTypeString
+		case mdb.SettingKeyBinancePollIntervalSeconds, mdb.SettingKeyBinanceLookbackMinutes:
+			item.Group = mdb.SettingGroupBinance
+			item.Type = mdb.SettingTypeInt
 		}
 		if err := data.SetSetting(item.Group, key, value, item.Type); err != nil {
 			out = append(out, errorResult(key, err))
@@ -304,8 +341,45 @@ func normalizeAndValidateSettingItem(group, key, value string) (string, error) {
 			return value, err
 		}
 		return normalized, nil
+	case mdb.SettingKeyBinanceDepositMonitorEnabled:
+		if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupBinance {
+			return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupBinance)
+		}
+		enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return value, fmt.Errorf("%s must be true or false", key)
+		}
+		return strconv.FormatBool(enabled), nil
+	case mdb.SettingKeyBinanceAPIKey, mdb.SettingKeyBinanceSecretKey:
+		if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupBinance {
+			return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupBinance)
+		}
+		value = strings.TrimSpace(value)
+		if len(value) > 512 {
+			return value, fmt.Errorf("%s is too long", key)
+		}
+		return value, nil
+	case mdb.SettingKeyBinancePollIntervalSeconds:
+		return normalizeBoundedBinanceIntSetting(group, key, value, 5, 300)
+	case mdb.SettingKeyBinanceLookbackMinutes:
+		return normalizeBoundedBinanceIntSetting(group, key, value, 1, 1440)
 	}
 	return value, nil
+}
+
+func isBinanceCredentialSetting(key string) bool {
+	return key == mdb.SettingKeyBinanceAPIKey || key == mdb.SettingKeyBinanceSecretKey
+}
+
+func normalizeBoundedBinanceIntSetting(group, key, value string, min, max int) (string, error) {
+	if strings.ToLower(strings.TrimSpace(group)) != mdb.SettingGroupBinance {
+		return value, fmt.Errorf("%s must use group %s", key, mdb.SettingGroupBinance)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || n < min || n > max {
+		return value, fmt.Errorf("%s must be between %d and %d", key, min, max)
+	}
+	return strconv.Itoa(n), nil
 }
 
 type RateRefreshRequest struct {

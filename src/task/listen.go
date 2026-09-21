@@ -20,6 +20,7 @@ func Start() {
 	go StartTronBlockScannerListener()
 	go StartTonBlockScannerListener()
 	go StartAptosLedgerScannerListener()
+	go StartBinanceDepositListener()
 
 	c := cron.New()
 

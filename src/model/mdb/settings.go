@@ -9,11 +9,12 @@ package mdb
 // empty and fall back to hardcoded defaults until an admin sets them. The
 // system.jwt_secret key is auto-generated on first startup.
 const (
-	SettingGroupBrand  = "brand"
-	SettingGroupRate   = "rate"
-	SettingGroupSystem = "system"
-	SettingGroupEpay   = "epay"
-	SettingGroupOkPay  = "okpay"
+	SettingGroupBrand   = "brand"
+	SettingGroupRate    = "rate"
+	SettingGroupSystem  = "system"
+	SettingGroupEpay    = "epay"
+	SettingGroupOkPay   = "okpay"
+	SettingGroupBinance = "binance"
 )
 
 const (
@@ -65,18 +66,27 @@ const (
 	SettingKeyOkPayReturnURL      = "okpay.return_url"
 	SettingKeyOkPayTimeoutSeconds = "okpay.timeout_seconds"
 	SettingKeyOkPayAllowTokens    = "okpay.allow_tokens"
+
+	// Binance read-only deposit monitor settings.
+	SettingKeyBinanceDepositMonitorEnabled = "binance.deposit_monitor_enabled"
+	SettingKeyBinanceAPIKey                = "binance.api_key"
+	SettingKeyBinanceSecretKey             = "binance.secret_key"
+	SettingKeyBinancePollIntervalSeconds   = "binance.poll_interval_seconds"
+	SettingKeyBinanceLookbackMinutes       = "binance.lookback_minutes"
 )
 
 const (
-	SettingDefaultSystemLogLevel     = "error"
-	SettingDefaultRateForcedRateList = `{"cny":{"usdt":0.14705882352941177,"usdc":0.14705882352941177}}`
-	SettingDefaultRateMode           = "fixed"
-	SettingDefaultRateCacheTTL       = 300
-	SettingDefaultBinanceC2CCacheTTL = 180
+	SettingDefaultSystemLogLevel      = "error"
+	SettingDefaultRateForcedRateList  = `{"cny":{"usdt":0.14705882352941177,"usdc":0.14705882352941177}}`
+	SettingDefaultRateMode            = "fixed"
+	SettingDefaultRateCacheTTL        = 300
+	SettingDefaultBinanceC2CCacheTTL  = 180
+	SettingDefaultBinancePollInterval = 15
+	SettingDefaultBinanceLookback     = 30
 )
 
 type Setting struct {
-	Group       string `gorm:"column:group;size:32;index:settings_group_index" json:"group" enums:"brand,rate,system,epay,okpay" example:"rate"`
+	Group       string `gorm:"column:group;size:32;index:settings_group_index" json:"group" enums:"brand,rate,system,epay,okpay,binance" example:"rate"`
 	Key         string `gorm:"column:key;unique;size:128" json:"key" example:"rate.forced_rate_list"`
 	Value       string `gorm:"column:value;type:text" json:"value" example:"{\"cny\":{\"usdt\":0.14635}}"`
 	Type        string `gorm:"column:type;size:16;default:string" json:"type" enums:"string,int,bool,json" example:"json"`
