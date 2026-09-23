@@ -25,15 +25,15 @@ type plasmaRecipientSnapshot struct {
 var plasmaWatchedRecipients atomic.Pointer[plasmaRecipientSnapshot]
 
 // StartPlasmaWebSocketListener drives the Plasma listener with dynamic
-// chain/token config reload every 10s.
+// chain/token and active-order checks every 3s.
 func StartPlasmaWebSocketListener() {
 	for {
-		if data.IsChainEnabled(mdb.NetworkPlasma) {
+		if shouldMonitorChain(mdb.NetworkPlasma, "[PLASMA-WS]") && data.IsChainEnabled(mdb.NetworkPlasma) {
 			if contracts := loadChainTokenContracts(mdb.NetworkPlasma, "[PLASMA-WS]"); len(contracts) > 0 {
 				runPlasmaListener(contracts)
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 

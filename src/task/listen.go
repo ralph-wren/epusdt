@@ -25,13 +25,13 @@ func Start() {
 	c := cron.New()
 
 	// Solana polling
-	_, err := c.AddJob("@every 5s", ListenSolJob{})
+	_, err := c.AddJob("@every 3s", ListenSolJob{})
 	if err != nil {
 		log.Sugar.Errorf("[task] Failed to add ListenSolJob: %v", err)
 		return
 	}
 
-	log.Sugar.Info("[task] ListenSolJob scheduled successfully (@every 5s)")
+	log.Sugar.Info("[task] ListenSolJob scheduled successfully (@every 3s)")
 
 	// RPC node health checks
 	_, err = c.AddJob("@every 30s", RpcHealthJob{})

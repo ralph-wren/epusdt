@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/GMWalletApp/epusdt/config"
 	"github.com/GMWalletApp/epusdt/model/dao"
 	"github.com/GMWalletApp/epusdt/model/mdb"
 	"github.com/GMWalletApp/epusdt/model/request"
@@ -16,6 +17,27 @@ import (
 )
 
 var ErrTransactionLocked = errors.New("transaction amount is already locked")
+
+func activeOnChainOrders() *gorm.DB {
+	return dao.Mdb.Model(&mdb.Orders{}).
+		Where("status = ?", mdb.StatusWaitPay).
+		Where("(pay_provider = ? OR pay_provider = '')", mdb.PaymentProviderOnChain).
+		Where("created_at > ?", time.Now().Add(-config.GetOrderExpirationTimeDuration()))
+}
+
+func HasActiveOnChainOrders(network string) (bool, error) {
+	var count int64
+	err := activeOnChainOrders().Where("network = ?", normalizeLockNetwork(network)).Limit(1).Count(&count).Error
+	return count > 0, err
+}
+
+func HasActiveBinanceDepositOrders() (bool, error) {
+	var count int64
+	err := activeOnChainOrders().
+		Where("network IN ?", []string{mdb.NetworkTron, mdb.NetworkEthereum, mdb.NetworkBsc, mdb.NetworkSolana, mdb.NetworkPolygon, mdb.NetworkAptos, mdb.NetworkTon}).
+		Where("token = ?", "USDT").Limit(1).Count(&count).Error
+	return count > 0, err
+}
 
 type PendingCallbackOrder struct {
 	TradeId         string      `gorm:"column:trade_id"`

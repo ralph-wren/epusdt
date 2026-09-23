@@ -47,12 +47,12 @@ func StartPlasmaBackfillScannerListener() {
 
 func startEvmBackfillScanner(network, logPrefix string, storeRecipients evmRecipientStoreFunc, isWatchedRecipient evmRecipientCheckerFunc) {
 	for {
-		if data.IsChainEnabled(network) {
+		if shouldMonitorChain(network, logPrefix) && data.IsChainEnabled(network) {
 			if contracts := loadChainTokenContracts(network, logPrefix); len(contracts) > 0 {
 				runEvmBackfillScanner(network, logPrefix, contracts, storeRecipients, isWatchedRecipient)
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 
@@ -160,7 +160,8 @@ func runEvmBackfillLoop(ctx context.Context, client *ethclient.Client, network, 
 			return nil
 		}
 
-		chain, interval := evmBackfillChainConfig(network)
+		chain, _ := evmBackfillChainConfig(network)
+		interval := activeOrderPollInterval
 		if chain == nil || !chain.Enabled {
 			return nil
 		}

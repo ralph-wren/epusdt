@@ -14,31 +14,35 @@ import (
 )
 
 const evmNodeDialTimeout = 10 * time.Second
+const activeOrderPollInterval = 3 * time.Second
 
-// chainEnabledWatchdog returns a cancellable context whose cancel() is
-// invoked when either:
-//  1. IsChainEnabled(network) returns false — admin disabled the chain
-//  2. The enabled-token fingerprint changes — admin added/removed/
-//     toggled a chain_tokens row for this network
-//
-// Both cases need the listener to exit so the outer loop can reconnect
-// with the fresh token set (EVM WebSocket subscriptions are fixed at
-// connect time; to pick up a new contract we must re-subscribe).
-//
-// initialFingerprint is the fingerprint computed BEFORE connecting; the
-// watchdog compares every 10s tick against this baseline. Caller must
-// defer the returned cancel func to release the goroutine.
+func shouldMonitorChain(network, logPrefix string) bool {
+	active, err := data.HasActiveOnChainOrders(network)
+	if err != nil {
+		log.Sugar.Warnf("%s check active orders: %v", logPrefix, err)
+		return false
+	}
+	return active
+}
+
+// chainEnabledWatchdog stops EVM listeners when the chain is disabled, no
+// payable order remains, or their token/wallet subscriptions need refreshing.
+// Caller must defer the returned cancel func to release the goroutine.
 func chainEnabledWatchdog(network, logPrefix, initialFingerprint string) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	initialWalletFingerprint := chainWalletFingerprint(network)
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(activeOrderPollInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
+				if !shouldMonitorChain(network, logPrefix) {
+					cancel()
+					return
+				}
 				if !data.IsChainEnabled(network) {
 					log.Sugar.Infof("%s chain disabled, stopping listener", logPrefix)
 					cancel()

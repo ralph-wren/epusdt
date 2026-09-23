@@ -183,12 +183,20 @@ func mapBinanceDepositNetwork(network string) (string, bool) {
 func StartBinanceDepositListener() {
 	for {
 		config := loadBinanceDepositConfig()
+		active := false
 		if config.Enabled {
+			var err error
+			active, err = data.HasActiveBinanceDepositOrders()
+			if err != nil {
+				log.Sugar.Warnf("[binance-deposit] check active orders: %v", err)
+			}
+		}
+		if active {
 			if err := pollBinanceDeposits(context.Background(), config); err != nil {
 				log.Sugar.Errorf("[binance-deposit] poll failed: %v", err)
 			}
 		}
-		time.Sleep(config.PollInterval)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 

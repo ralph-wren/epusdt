@@ -130,6 +130,9 @@ func seedTonScannerWallet(t *testing.T) {
 	if _, err := data.AddWalletAddressWithNetwork(mdb.NetworkTon, "EQC6KV4zs8TJtSZapOrRFmqSkxzpq-oSCoxekQRKElf4nC1I"); err != nil {
 		t.Fatalf("seed TON wallet: %v", err)
 	}
+	if err := dao.Mdb.Create(&mdb.Orders{TradeId: "ton-active", OrderId: "ton-active", Network: mdb.NetworkTon, Token: "TON", PayProvider: mdb.PaymentProviderOnChain, Status: mdb.StatusWaitPay}).Error; err != nil {
+		t.Fatalf("seed TON order: %v", err)
+	}
 }
 
 func TestResolveTonLiteNodeSkipsCoolingPrimary(t *testing.T) {

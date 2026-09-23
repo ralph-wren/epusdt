@@ -75,6 +75,9 @@ func resetAptosScannerHooks(t *testing.T) {
 
 func seedAptosScannerChain(t *testing.T, wallets ...string) []string {
 	t.Helper()
+	if err := dao.Mdb.Create(&mdb.Orders{TradeId: "aptos-active", OrderId: "aptos-active", Network: mdb.NetworkAptos, Token: "USDT", PayProvider: mdb.PaymentProviderOnChain, Status: mdb.StatusWaitPay}).Error; err != nil {
+		t.Fatalf("seed Aptos order: %v", err)
+	}
 	if err := dao.Mdb.Create(&mdb.Chain{Network: mdb.NetworkAptos, Enabled: true, MinConfirmations: 1, ScanIntervalSec: 1}).Error; err != nil {
 		t.Fatalf("seed Aptos chain: %v", err)
 	}

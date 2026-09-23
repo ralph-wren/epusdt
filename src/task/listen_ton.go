@@ -73,7 +73,12 @@ func StartTonBlockScannerListener() {
 	cache := newTonJettonWalletCache()
 	cursor := &tonRuntimeCursor{}
 	for {
-		chain, interval := tonChainConfig()
+		if !shouldMonitorChain(mdb.NetworkTon, "[TON]") {
+			sleepOrDone(context.Background(), activeOrderPollInterval)
+			continue
+		}
+		chain, _ := tonChainConfig()
+		interval := activeOrderPollInterval
 		if chain == nil || !chain.Enabled {
 			sleepOrDone(context.Background(), interval)
 			continue
@@ -109,7 +114,11 @@ func runTonScanner(ctx context.Context, api ton.APIClientWrapped, cache *tonJett
 	}
 	watchSignature := ""
 	for {
-		chain, interval := tonChainConfig()
+		if !shouldMonitorChain(mdb.NetworkTon, "[TON]") {
+			return nil
+		}
+		chain, _ := tonChainConfig()
+		interval := activeOrderPollInterval
 		if chain == nil || !chain.Enabled {
 			return nil
 		}

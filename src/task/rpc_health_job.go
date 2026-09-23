@@ -32,7 +32,7 @@ func (r RpcHealthJob) Run() {
 	}
 	var wg sync.WaitGroup
 	for i := range nodes {
-		if !nodes[i].Enabled {
+		if !nodes[i].Enabled || !shouldMonitorChain(nodes[i].Network, "[rpc-health]") {
 			continue
 		}
 		wg.Add(1)

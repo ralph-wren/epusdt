@@ -28,18 +28,18 @@ type ethRecipientSnapshot struct {
 var ethWatchedRecipients atomic.Pointer[ethRecipientSnapshot]
 
 func StartEthereumWebSocketListener() {
-	// Wait until the chain is enabled AND at least one token contract
-	// is configured. Polls every 10s so admin-side toggles kick in
+	// Wait until the chain is enabled, has an active order and a token contract.
+	// Polls every 3s so admin-side toggles kick in
 	// without a restart. Once conditions are met we proceed to connect;
 	// if the websocket later drops we exit the loop and rely on the
 	// process-level restart to reconnect (same as before this refactor).
 	for {
-		if data.IsChainEnabled(mdb.NetworkEthereum) {
+		if shouldMonitorChain(mdb.NetworkEthereum, "[ETH-WS]") && data.IsChainEnabled(mdb.NetworkEthereum) {
 			if contracts := loadChainTokenContracts(mdb.NetworkEthereum, "[ETH-WS]"); len(contracts) > 0 {
 				runEthereumListener(contracts)
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 

@@ -72,7 +72,14 @@ func runAptosLedgerScanner(ctx context.Context, provider aptosChainProvider, cur
 	}
 	watchSignature := ""
 	for {
-		chain, interval := moveChainConfig(mdb.NetworkAptos)
+		if !shouldMonitorChain(mdb.NetworkAptos, "[APTOS]") {
+			if !sleepOrDone(ctx, activeOrderPollInterval) {
+				return nil
+			}
+			continue
+		}
+		chain, _ := moveChainConfig(mdb.NetworkAptos)
+		interval := activeOrderPollInterval
 		if chain == nil || !chain.Enabled {
 			log.Sugar.Debug("[APTOS] chain disabled or not configured, idling")
 			if !sleepOrDone(ctx, interval) {

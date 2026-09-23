@@ -25,15 +25,15 @@ type polygonRecipientSnapshot struct {
 var polygonWatchedRecipients atomic.Pointer[polygonRecipientSnapshot]
 
 // StartPolygonWebSocketListener drives the Polygon listener with
-// dynamic chain/token config reload every 10s.
+// dynamic chain/token and active-order checks every 3s.
 func StartPolygonWebSocketListener() {
 	for {
-		if data.IsChainEnabled(mdb.NetworkPolygon) {
+		if shouldMonitorChain(mdb.NetworkPolygon, "[POLYGON-WS]") && data.IsChainEnabled(mdb.NetworkPolygon) {
 			if contracts := loadChainTokenContracts(mdb.NetworkPolygon, "[POLYGON-WS]"); len(contracts) > 0 {
 				runPolygonListener(contracts)
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 

@@ -55,4 +55,9 @@ func TestActiveOnChainOrdersGate(t *testing.T) {
 	check(mdb.NetworkTron, true)
 	binance(true)
 	check(mdb.NetworkEthereum, false)
+	if err := dao.Mdb.Model(&mdb.Orders{}).Where("trade_id = ?", "legacy").Update("status", mdb.StatusPaySuccess).Error; err != nil {
+		t.Fatal(err)
+	}
+	check(mdb.NetworkTron, false)
+	binance(false)
 }

@@ -25,16 +25,15 @@ type bscRecipientSnapshot struct {
 var bscWatchedRecipients atomic.Pointer[bscRecipientSnapshot]
 
 // StartBscWebSocketListener drives the BSC listener. Checks chain
-// enable status and reloads contract addresses from chain_tokens every
-// 10s so admin-side toggles take effect without a restart.
+// enable status, active orders and contract addresses every 3s.
 func StartBscWebSocketListener() {
 	for {
-		if data.IsChainEnabled(mdb.NetworkBsc) {
+		if shouldMonitorChain(mdb.NetworkBsc, "[BSC-WS]") && data.IsChainEnabled(mdb.NetworkBsc) {
 			if contracts := loadChainTokenContracts(mdb.NetworkBsc, "[BSC-WS]"); len(contracts) > 0 {
 				runBscListener(contracts)
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(activeOrderPollInterval)
 	}
 }
 

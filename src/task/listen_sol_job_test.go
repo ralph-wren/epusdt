@@ -80,6 +80,9 @@ func TestListenSolJobRecordsRuntimeBlockHeight(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed solana chain_token: %v", err)
 	}
+	if err := dao.Mdb.Create(&mdb.Orders{TradeId: "sol-active", OrderId: "sol-active", Network: mdb.NetworkSolana, Token: "SOL", PayProvider: mdb.PaymentProviderOnChain, Status: mdb.StatusWaitPay}).Error; err != nil {
+		t.Fatalf("seed solana order: %v", err)
+	}
 
 	ListenSolJob{}.Run()
 
@@ -103,6 +106,17 @@ func TestListenSolJobRecordsRuntimeBlockHeight(t *testing.T) {
 	}
 	if solana.LastSyncAt.IsZero() {
 		t.Fatal("solana last_sync_at is zero")
+	}
+}
+
+func TestListenSolJobDoesNotCallRpcWithoutActiveOrder(t *testing.T) {
+	cleanup := testutil.SetupTestDatabases(t)
+	defer cleanup()
+	data.ResetRpcRuntimeStatsForTest()
+	t.Cleanup(data.ResetRpcRuntimeStatsForTest)
+	ListenSolJob{}.Run()
+	if _, ok := data.SnapshotRpcRuntimeStats()[mdb.NetworkSolana]; ok {
+		t.Fatal("idle Solana listener recorded RPC activity")
 	}
 }
 

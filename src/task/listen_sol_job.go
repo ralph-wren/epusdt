@@ -21,7 +21,7 @@ func (r ListenSolJob) Run() {
 		defer gListenSolJobLock.Unlock()
 
 		log.Sugar.Debug("[ListenSolJob] Job triggered")
-		if !data.IsChainEnabled(mdb.NetworkSolana) {
+		if !shouldMonitorChain(mdb.NetworkSolana, "[SOL]") || !data.IsChainEnabled(mdb.NetworkSolana) {
 			log.Sugar.Debug("[ListenSolJob] chain disabled, skipping")
 			return
 		}

@@ -401,7 +401,11 @@ func (s *Scanner) Run() {
 		case <-statTicker.C:
 			log.Sugar.Infof("[TRON-BLOCK] stats blocks=%d trc20=%d trx=%d", s.totalBlocks, s.totalTRC20Txs, s.totalTRXTxs)
 		case <-ticker.C:
-			s.poll()
+			if shouldMonitorChain(mdb.NetworkTron, "[TRON-BLOCK]") {
+				s.poll()
+			} else {
+				return
+			}
 		}
 	}
 }
@@ -422,6 +426,9 @@ func (s *Scanner) poll() {
 	tokenMap := loadTronTRC20TokenMap()
 	hadBlockFetchError := false
 	for num := s.lastBlock + 1; num <= latestNum; num++ {
+		if num%10 == 0 && !shouldMonitorChain(mdb.NetworkTron, "[TRON-BLOCK]") {
+			return
+		}
 		var block *Block
 		if num == latestNum {
 			block = latest
@@ -473,10 +480,14 @@ func (s *Scanner) recordRpcFailure(reason string) {
 
 func StartTronBlockScannerListener() {
 	for {
+		if !shouldMonitorChain(mdb.NetworkTron, "[TRON-BLOCK]") || !data.IsChainEnabled(mdb.NetworkTron) {
+			time.Sleep(activeOrderPollInterval)
+			continue
+		}
 		scanner := NewScanner()
 		if err := scanner.Init(); err != nil {
 			log.Sugar.Errorf("[TRON-BLOCK] init: %v, retrying...", err)
-			time.Sleep(10 * time.Second)
+			time.Sleep(activeOrderPollInterval)
 			continue
 		}
 		scanner.Run()
