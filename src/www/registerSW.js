@@ -9,7 +9,7 @@ if ('serviceWorker' in navigator) {
 
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register('/sw.js?v=orders-date-20260926', {
+      .register('/sw.js?v=orders-date-20260926-v2', {
         scope: '/',
         updateViaCache: 'none',
       })
