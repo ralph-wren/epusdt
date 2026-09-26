@@ -219,6 +219,9 @@ func (c *BaseAdminController) UpsertSettings(ctx echo.Context) error {
 			out = append(out, errorResult(key, err))
 			continue
 		}
+		if item.Group == mdb.SettingGroupBinance {
+			data.NotifyBinanceDepositMonitor()
+		}
 		if key == mdb.SettingKeySystemLogLevel {
 			if err := appLog.SetLevel(value); err != nil {
 				out = append(out, errorResult(key, err))
@@ -537,6 +540,9 @@ func (c *BaseAdminController) DeleteSetting(ctx echo.Context) error {
 	}
 	if err := data.DeleteSetting(key); err != nil {
 		return c.FailJson(ctx, err)
+	}
+	if strings.HasPrefix(key, "binance.") {
+		data.NotifyBinanceDepositMonitor()
 	}
 	if key == mdb.SettingKeyRateForcedRateList {
 		if err := data.EnsureDefaultForcedRateList(); err != nil {

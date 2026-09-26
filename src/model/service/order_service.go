@@ -238,6 +238,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 		_ = data.UnLockTransactionByTradeId(tradeID)
 		return nil, err
 	}
+	data.NotifyBinanceDepositOrderCreated(order)
 
 	return buildCreateTransactionResponse(order), nil
 }
@@ -727,6 +728,7 @@ func SwitchNetwork(req *request.SwitchNetworkRequest) (*response.CheckoutCounter
 		_ = data.UnLockTransactionByTradeId(subTradeID)
 		return nil, err
 	}
+	data.NotifyBinanceDepositOrderCreated(subOrder)
 
 	// Mark parent as selected and refresh its expiration to match the sub-order
 	_ = data.MarkOrderSelected(parent.TradeId)

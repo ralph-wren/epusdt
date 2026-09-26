@@ -61,3 +61,36 @@ func TestActiveOnChainOrdersGate(t *testing.T) {
 	check(mdb.NetworkTron, false)
 	binance(false)
 }
+
+func TestBinanceDepositOrderNotification(t *testing.T) {
+	wakeup := BinanceDepositMonitorWakeup()
+	select {
+	case <-wakeup:
+	default:
+	}
+	for _, order := range []*mdb.Orders{
+		nil,
+		{Status: mdb.StatusExpired, Token: "USDT", PayProvider: mdb.PaymentProviderOnChain},
+		{Status: mdb.StatusWaitPay, Token: "USDC", PayProvider: mdb.PaymentProviderOnChain},
+		{Status: mdb.StatusWaitPay, Token: "USDT", PayProvider: mdb.PaymentProviderOkPay},
+	} {
+		NotifyBinanceDepositOrderCreated(order)
+	}
+	select {
+	case <-wakeup:
+		t.Fatal("irrelevant order woke Binance deposit listener")
+	default:
+	}
+	NotifyBinanceDepositOrderCreated(&mdb.Orders{Status: mdb.StatusWaitPay, Token: "usdt", PayProvider: mdb.PaymentProviderOnChain})
+	NotifyBinanceDepositOrderCreated(&mdb.Orders{Status: mdb.StatusWaitPay, Token: "USDT", PayProvider: mdb.PaymentProviderOnChain})
+	select {
+	case <-wakeup:
+	default:
+		t.Fatal("eligible order did not wake Binance deposit listener")
+	}
+	select {
+	case <-wakeup:
+		t.Fatal("notifications should coalesce")
+	default:
+	}
+}

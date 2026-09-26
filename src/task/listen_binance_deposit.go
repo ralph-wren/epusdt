@@ -181,30 +181,55 @@ func mapBinanceDepositNetwork(network string) (string, bool) {
 }
 
 func StartBinanceDepositListener() {
-	for {
-		config := loadBinanceDepositConfig()
-		active := false
-		if config.Enabled {
-			var err error
-			active, err = data.HasActiveBinanceDepositOrders()
-			if err != nil {
-				log.Sugar.Warnf("[binance-deposit] check active orders: %v", err)
-			}
-		}
-		if active {
-			if err := pollBinanceDeposits(context.Background(), config); err != nil {
-				log.Sugar.Errorf("[binance-deposit] poll failed: %v", err)
-			}
-		}
-		time.Sleep(binanceDepositPollDelay(config, active))
-	}
+	runBinanceDepositListener(context.Background(), data.BinanceDepositMonitorWakeup(),
+		loadBinanceDepositConfig, data.HasActiveBinanceDepositOrders, pollBinanceDeposits)
 }
 
-func binanceDepositPollDelay(config binanceDepositConfig, active bool) time.Duration {
-	if active {
-		return config.PollInterval
+func runBinanceDepositListener(ctx context.Context, wakeup <-chan struct{},
+	load func() binanceDepositConfig, hasOrders func() (bool, error),
+	poll func(context.Context, binanceDepositConfig) error) {
+	// Check once on startup to resume orders that survived a restart.
+	checkOrders := true
+	for {
+		if !checkOrders {
+			select {
+			case <-ctx.Done():
+				return
+			case <-wakeup:
+			}
+		}
+		checkOrders = false
+		config := load()
+		if !config.Enabled {
+			continue
+		}
+		active, err := hasOrders()
+		if err != nil {
+			log.Sugar.Warnf("[binance-deposit] check active orders: %v", err)
+			// An unavailable database must not leave committed orders unmonitored.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(activeOrderPollInterval):
+			case <-wakeup:
+			}
+			checkOrders = true
+			continue
+		}
+		if !active {
+			continue
+		}
+		if err := poll(ctx, config); err != nil {
+			log.Sugar.Errorf("[binance-deposit] poll failed: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(config.PollInterval):
+		case <-wakeup:
+		}
+		checkOrders = true
 	}
-	return activeOrderPollInterval
 }
 
 func pollBinanceDeposits(ctx context.Context, config binanceDepositConfig) error {

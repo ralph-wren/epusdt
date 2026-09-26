@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -102,14 +103,52 @@ func TestLoadBinanceDepositConfigDisabledWithoutCredentials(t *testing.T) {
 	}
 }
 
-func TestBinanceDepositPollDelay(t *testing.T) {
-	config := binanceDepositConfig{PollInterval: 45 * time.Second}
-	if got := binanceDepositPollDelay(config, true); got != 45*time.Second {
-		t.Fatalf("active poll delay = %v, want 45s", got)
+func TestBinanceDepositListenerSleepsUntilOrderAndStopsWhenIdle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wakeup := make(chan struct{}, 1)
+	checks := make(chan struct{}, 10)
+	polls := make(chan struct{}, 10)
+	done := make(chan struct{})
+	var active atomic.Bool
+	go func() {
+		defer close(done)
+		runBinanceDepositListener(ctx, wakeup,
+			func() binanceDepositConfig {
+				return binanceDepositConfig{Enabled: true, PollInterval: 30 * time.Millisecond}
+			},
+			func() (bool, error) { checks <- struct{}{}; return active.Load(), nil },
+			func(context.Context, binanceDepositConfig) error { polls <- struct{}{}; return nil })
+	}()
+	wait := func(ch <-chan struct{}, label string) {
+		t.Helper()
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for %s", label)
+		}
 	}
-	if got := binanceDepositPollDelay(config, false); got != activeOrderPollInterval {
-		t.Fatalf("idle poll delay = %v, want %v", got, activeOrderPollInterval)
+	wait(checks, "startup check")
+	select {
+	case <-checks:
+		t.Fatal("idle listener checked orders without notification")
+	case <-time.After(80 * time.Millisecond):
 	}
+	active.Store(true)
+	wakeup <- struct{}{}
+	wait(checks, "order notification")
+	wait(polls, "immediate deposit poll")
+	wait(checks, "active interval")
+	wait(polls, "next deposit poll")
+	active.Store(false)
+	wait(checks, "order completion")
+	select {
+	case <-checks:
+		t.Fatal("idle listener resumed checking orders without notification")
+	case <-time.After(80 * time.Millisecond):
+	}
+	cancel()
+	wait(done, "listener shutdown")
 }
 
 func TestPollBinanceDepositsSkipsDisabledOrIncompleteConfiguration(t *testing.T) {

@@ -18,6 +18,28 @@ import (
 
 var ErrTransactionLocked = errors.New("transaction amount is already locked")
 
+var binanceDepositWakeup = make(chan struct{}, 1)
+
+// NotifyBinanceDepositOrderCreated wakes the deposit listener after an order commits.
+func NotifyBinanceDepositOrderCreated(order *mdb.Orders) {
+	if order == nil || order.Status != mdb.StatusWaitPay || !strings.EqualFold(order.Token, "USDT") ||
+		(order.PayProvider != mdb.PaymentProviderOnChain && order.PayProvider != "") {
+		return
+	}
+	NotifyBinanceDepositMonitor()
+}
+
+func NotifyBinanceDepositMonitor() {
+	select {
+	case binanceDepositWakeup <- struct{}{}:
+	default:
+	}
+}
+
+func BinanceDepositMonitorWakeup() <-chan struct{} {
+	return binanceDepositWakeup
+}
+
 func activeOnChainOrders() *gorm.DB {
 	return dao.Mdb.Model(&mdb.Orders{}).
 		Where("status = ?", mdb.StatusWaitPay).

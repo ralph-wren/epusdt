@@ -298,6 +298,11 @@ func TestRootPostRoute(t *testing.T) {
 // TestCreateOrderGmpayV1Solana tests the gmpay route with solana network.
 func TestCreateOrderGmpayV1Solana(t *testing.T) {
 	e := setupTestEnv(t)
+	wakeup := data.BinanceDepositMonitorWakeup()
+	select {
+	case <-wakeup:
+	default:
+	}
 
 	body := signBody(map[string]interface{}{
 		"order_id":   "test-sol-001",
@@ -330,6 +335,11 @@ func TestCreateOrderGmpayV1Solana(t *testing.T) {
 	}
 	if data["receive_address"] != "SolTestAddress001" {
 		t.Errorf("expected solana address, got: %v", data["receive_address"])
+	}
+	select {
+	case <-wakeup:
+	default:
+		t.Fatal("created USDT order did not wake Binance deposit listener")
 	}
 	t.Logf("Order created: trade_id=%v address=%v amount=%v", data["trade_id"], data["receive_address"], data["actual_amount"])
 }
