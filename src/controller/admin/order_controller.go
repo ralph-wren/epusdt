@@ -19,16 +19,40 @@ import (
 
 // OrderListResponse wraps the paginated order list.
 type OrderListResponse struct {
-	List     []mdb.Orders `json:"list"`
+	List     []OrderWithDates `json:"list"`
 	Total    int64        `json:"total" example:"100"`
 	Page     int          `json:"page" example:"1"`
 	PageSize int          `json:"page_size" example:"20"`
 }
 
+// OrderWithDates keeps the stored Carbon timestamps intact while exposing
+// complete dates to the admin order views.
+type OrderWithDates struct {
+	mdb.Orders
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+func withOrderDates(order mdb.Orders) OrderWithDates {
+	return OrderWithDates{
+		Orders:    order,
+		CreatedAt: order.CreatedAt.ToDateTimeString(),
+		UpdatedAt: order.UpdatedAt.ToDateTimeString(),
+	}
+}
+
+func withOrderDatesList(orders []mdb.Orders) []OrderWithDates {
+	result := make([]OrderWithDates, 0, len(orders))
+	for _, order := range orders {
+		result = append(result, withOrderDates(order))
+	}
+	return result
+}
+
 // OrderWithSub embeds a parent order together with its child orders.
 type OrderWithSub struct {
-	mdb.Orders
-	SubOrders []mdb.Orders `json:"sub_orders"`
+	OrderWithDates
+	SubOrders []OrderWithDates `json:"sub_orders"`
 }
 
 // OrderWithSubListResponse wraps the paginated list-with-sub result.
@@ -65,7 +89,7 @@ func (c *BaseAdminController) ListOrders(ctx echo.Context) error {
 		return c.FailJson(ctx, err)
 	}
 	return c.SucJson(ctx, map[string]interface{}{
-		"list":      rows,
+		"list":      withOrderDatesList(rows),
 		"total":     total,
 		"page":      f.Page,
 		"page_size": f.PageSize,
@@ -79,7 +103,7 @@ func (c *BaseAdminController) ListOrders(ctx echo.Context) error {
 // @Security     AdminJWT
 // @Produce      json
 // @Param        trade_id path string true "Trade ID"
-// @Success      200 {object} response.ApiResponse{data=mdb.Orders}
+// @Success      200 {object} response.ApiResponse{data=admin.OrderWithDates}
 // @Failure      400 {object} response.ApiResponse
 // @Router       /admin/api/v1/orders/{trade_id} [get]
 func (c *BaseAdminController) GetOrder(ctx echo.Context) error {
@@ -94,7 +118,7 @@ func (c *BaseAdminController) GetOrder(ctx echo.Context) error {
 	if err = data.HydrateSettledPaymentDetails(order); err != nil {
 		return c.FailJson(ctx, err)
 	}
-	return c.SucJson(ctx, order)
+	return c.SucJson(ctx, withOrderDates(*order))
 }
 
 // CloseOrder flips a waiting order to expired and releases its lock.
@@ -370,11 +394,7 @@ func (c *BaseAdminController) ListOrdersWithSub(ctx echo.Context) error {
 
 	list := make([]OrderWithSub, 0, len(rows))
 	for _, r := range rows {
-		children := subMap[r.TradeId]
-		if children == nil {
-			children = []mdb.Orders{}
-		}
-		list = append(list, OrderWithSub{Orders: r, SubOrders: children})
+		list = append(list, OrderWithSub{OrderWithDates: withOrderDates(r), SubOrders: withOrderDatesList(subMap[r.TradeId])})
 	}
 
 	return c.SucJson(ctx, OrderWithSubListResponse{
@@ -410,8 +430,5 @@ func (c *BaseAdminController) GetOrderWithSub(ctx echo.Context) error {
 	if err != nil {
 		return c.FailJson(ctx, err)
 	}
-	if subOrders == nil {
-		subOrders = []mdb.Orders{}
-	}
-	return c.SucJson(ctx, OrderWithSub{Orders: *order, SubOrders: subOrders})
+	return c.SucJson(ctx, OrderWithSub{OrderWithDates: withOrderDates(*order), SubOrders: withOrderDatesList(subOrders)})
 }
