@@ -188,11 +188,14 @@ func CloseOrderManually(tradeID string) (bool, error) {
 		Where("trade_id = ?", tradeID).
 		Where("status IN ?", []int{mdb.StatusWaitPay, mdb.StatusWaitSelect}).
 		Update("status", mdb.StatusExpired)
+	if result.Error == nil && result.RowsAffected > 0 {
+		NotifyOrderExpiration()
+	}
 	return result.RowsAffected > 0, result.Error
 }
 
 // ReopenOrderCallback flips callback_confirm back to NO so the mq
-// worker picks it up on the next tick. Used by "resend callback".
+// worker picks it up after the change. Used by "resend callback".
 func ReopenOrderCallback(tradeID string) (bool, error) {
 	result := dao.Mdb.Model(&mdb.Orders{}).
 		Where("trade_id = ?", tradeID).
@@ -201,6 +204,9 @@ func ReopenOrderCallback(tradeID string) (bool, error) {
 			"callback_confirm": mdb.CallBackConfirmNo,
 			"callback_num":     0,
 		})
+	if result.Error == nil && result.RowsAffected > 0 {
+		NotifyOrderCallback()
+	}
 	return result.RowsAffected > 0, result.Error
 }
 

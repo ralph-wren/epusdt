@@ -19,6 +19,45 @@ import (
 var ErrTransactionLocked = errors.New("transaction amount is already locked")
 
 var binanceDepositWakeup = make(chan struct{}, 1)
+var orderExpirationWakeup = make(chan struct{}, 1)
+var orderCallbackWakeup = make(chan struct{}, 1)
+var transactionLockWakeup = make(chan struct{}, 1)
+
+func wake(ch chan struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+func NotifyOrderExpiration()                 { wake(orderExpirationWakeup) }
+func OrderExpirationWakeup() <-chan struct{} { return orderExpirationWakeup }
+func NotifyOrderCallback()                   { wake(orderCallbackWakeup) }
+func OrderCallbackWakeup() <-chan struct{}   { return orderCallbackWakeup }
+func NotifyTransactionLocksChanged()         { wake(transactionLockWakeup) }
+func TransactionLockWakeup() <-chan struct{} { return transactionLockWakeup }
+
+func NextOrderExpiration() (*time.Time, error) {
+	var order mdb.Orders
+	err := dao.Mdb.Model(&mdb.Orders{}).Select("id", "created_at").
+		Where("status IN ?", []int{mdb.StatusWaitPay, mdb.StatusWaitSelect}).
+		Order("created_at asc").Limit(1).Find(&order).Error
+	if err != nil || order.ID == 0 {
+		return nil, err
+	}
+	next := order.CreatedAt.StdTime().Add(config.GetOrderExpirationTimeDuration())
+	return &next, nil
+}
+
+func NextTransactionLockExpiration() (*time.Time, error) {
+	var lock mdb.TransactionLock
+	err := dao.RuntimeDB.Model(&mdb.TransactionLock{}).Select("id", "expires_at").
+		Order("expires_at asc").Limit(1).Find(&lock).Error
+	if err != nil || lock.ID == 0 {
+		return nil, err
+	}
+	return &lock.ExpiresAt, nil
+}
 
 // NotifyBinanceDepositOrderCreated wakes the deposit listener after an order commits.
 func NotifyBinanceDepositOrderCreated(order *mdb.Orders) {
@@ -276,6 +315,7 @@ func GetPendingCallbackOrders(maxRetry int, limit int) ([]PendingCallbackOrder, 
 		Where("callback_num <= ?", maxRetry).
 		Where("callback_confirm = ?", mdb.CallBackConfirmNo).
 		Where("status = ?", mdb.StatusPaySuccess).
+		Where("parent_trade_id = ?", "").
 		Order("updated_at asc")
 	if limit > 0 {
 		query = query.Limit(limit)
@@ -456,21 +496,29 @@ func MarkProviderSwitchParentSelectedWithTransaction(tx *gorm.DB, tradeID string
 // ExpireOrderByTradeID marks a waiting order as expired. Used to retire failed
 // child-order attempts that should not remain selectable/reusable.
 func ExpireOrderByTradeID(tradeId string) error {
-	return dao.Mdb.Model(&mdb.Orders{}).
+	err := dao.Mdb.Model(&mdb.Orders{}).
 		Where("trade_id = ?", tradeId).
 		Where("status = ?", mdb.StatusWaitPay).
 		Updates(map[string]interface{}{
 			"status":      mdb.StatusExpired,
 			"is_selected": false,
 		}).Error
+	if err == nil {
+		NotifyOrderExpiration()
+	}
+	return err
 }
 
 // RefreshOrderExpiration resets created_at to now so the expiration timer restarts.
 // Called on the parent order when a sub-order is created or returned.
 func RefreshOrderExpiration(tradeId string) error {
-	return dao.Mdb.Model(&mdb.Orders{}).
+	err := dao.Mdb.Model(&mdb.Orders{}).
 		Where("trade_id = ?", tradeId).
 		Update("created_at", time.Now()).Error
+	if err == nil {
+		NotifyOrderExpiration()
+	}
+	return err
 }
 
 // ResetCallbackConfirmOk sets callback_confirm back to Ok.
@@ -585,7 +633,7 @@ func LockTransaction(network, address, token, tradeID string, amount float64, ex
 		ExpiresAt:       now.Add(expirationTime),
 	}
 
-	return dao.RuntimeDB.Transaction(func(tx *gorm.DB) error {
+	err := dao.RuntimeDB.Transaction(func(tx *gorm.DB) error {
 		expiredQuery := tx.Where("network = ?", network).
 			Where("token = ?", normalizedToken).
 			Where("expires_at <= ?", now)
@@ -618,6 +666,10 @@ func LockTransaction(network, address, token, tradeID string, amount float64, ex
 		}
 		return nil
 	})
+	if err == nil {
+		NotifyTransactionLocksChanged()
+	}
+	return err
 }
 
 // UnLockTransaction releases the reservation for network+address+token+amount.
@@ -638,11 +690,19 @@ func UnLockTransaction(network string, address string, token string, amount floa
 	if len(ids) == 0 {
 		return nil
 	}
-	return dao.RuntimeDB.Where("id IN ?", ids).Delete(&mdb.TransactionLock{}).Error
+	err := dao.RuntimeDB.Where("id IN ?", ids).Delete(&mdb.TransactionLock{}).Error
+	if err == nil {
+		NotifyTransactionLocksChanged()
+	}
+	return err
 }
 
 func UnLockTransactionByTradeId(tradeID string) error {
-	return dao.RuntimeDB.Where("trade_id = ?", tradeID).Delete(&mdb.TransactionLock{}).Error
+	err := dao.RuntimeDB.Where("trade_id = ?", tradeID).Delete(&mdb.TransactionLock{}).Error
+	if err == nil {
+		NotifyTransactionLocksChanged()
+	}
+	return err
 }
 
 func CleanupExpiredTransactionLocks() error {

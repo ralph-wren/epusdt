@@ -1,6 +1,7 @@
 package mq
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -53,25 +54,86 @@ type expirableOrder struct {
 }
 
 func runOrderExpirationLoop() {
-	runLoop("order_expiration", processExpiredOrders)
+	runScheduledLoop(context.Background(), "order_expiration", data.OrderExpirationWakeup(), data.NextOrderExpiration, processExpiredOrders)
 }
 
 func runOrderCallbackLoop() {
-	runLoop("order_callback", dispatchPendingCallbacks)
+	runScheduledLoop(context.Background(), "order_callback", data.OrderCallbackWakeup(), nextCallbackAttempt, dispatchPendingCallbacks)
 }
 
 func runTransactionLockCleanupLoop() {
-	runLoop("transaction_lock_cleanup", cleanupExpiredTransactionLocks)
+	runScheduledLoop(context.Background(), "transaction_lock_cleanup", data.TransactionLockWakeup(), data.NextTransactionLockExpiration, cleanupExpiredTransactionLocks)
 }
 
-func runLoop(name string, fn func()) {
-	safeRun(name, fn)
-	ticker := time.NewTicker(config.GetQueuePollInterval())
-	defer ticker.Stop()
-
-	for range ticker.C {
+// Each queue queries once at startup and on changes, then sleeps until the
+// next deadline. The retry timer is only used while work or a DB error exists.
+func runScheduledLoop(ctx context.Context, name string, wake <-chan struct{}, next func() (*time.Time, error), fn func()) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		deadline, err := next()
+		if err != nil {
+			log.Sugar.Errorf("[mq] schedule %s failed: %v", name, err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-wake:
+			case <-time.After(3 * time.Second):
+			}
+			continue
+		}
+		if deadline == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-wake:
+			}
+			continue
+		}
+		delay := time.Until(*deadline)
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-wake:
+				timer.Stop()
+				continue
+			case <-timer.C:
+			}
+		}
 		safeRun(name, fn)
+		// A failed attempt must not spin on the same overdue row.
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		case <-time.After(time.Second):
+		}
 	}
+}
+
+func nextCallbackAttempt() (*time.Time, error) {
+	orders, err := data.GetPendingCallbackOrders(config.GetOrderNoticeMaxRetry(), 0)
+	if err != nil {
+		return nil, err
+	}
+	var earliest *time.Time
+	for _, order := range orders {
+		if _, busy := callbackInflight.Load(order.TradeId); busy {
+			continue
+		}
+		due := order.UpdatedAt.StdTime().Add(callbackRetryDelay(order.CallbackNum))
+		if earliest == nil || due.Before(*earliest) {
+			earliest = &due
+		}
+	}
+	if earliest != nil && !earliest.After(time.Now()) && len(callbackLimiter) == cap(callbackLimiter) {
+		return nil, nil // an in-flight callback will wake us when it finishes
+	}
+	return earliest, nil
 }
 
 func safeRun(name string, fn func()) {
@@ -140,7 +202,7 @@ func dispatchPendingCallbacks() {
 	var orders []data.PendingCallbackOrder
 	err := withSQLiteBusyRetry(func() error {
 		var innerErr error
-		orders, innerErr = data.GetPendingCallbackOrders(maxRetry, batchSize)
+		orders, innerErr = data.GetPendingCallbackOrders(maxRetry, 0)
 		return innerErr
 	})
 	if err != nil {
@@ -172,6 +234,7 @@ func processCallback(tradeID string) {
 	defer func() {
 		<-callbackLimiter
 		callbackInflight.Delete(tradeID)
+		data.NotifyOrderCallback()
 	}()
 
 	freshOrder, err := data.GetOrderInfoByTradeId(tradeID)

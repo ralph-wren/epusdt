@@ -1,6 +1,7 @@
 package mq
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,6 +20,89 @@ import (
 	"github.com/GMWalletApp/epusdt/util/sign"
 	"github.com/go-resty/resty/v2"
 )
+
+func TestScheduledLoopSleepsWithoutWorkAndWakesOnChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wake := make(chan struct{}, 1)
+	var queries atomic.Int32
+	var runs atomic.Int32
+	var deadline atomic.Int64
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runScheduledLoop(ctx, "test", wake, func() (*time.Time, error) {
+			queries.Add(1)
+			when := deadline.Load()
+			if when == 0 {
+				return nil, nil
+			}
+			due := time.Unix(0, when)
+			return &due, nil
+		}, func() {
+			runs.Add(1)
+			deadline.Store(0)
+		})
+	}()
+	await := func(want int32) {
+		t.Helper()
+		end := time.After(2 * time.Second)
+		for queries.Load() < want {
+			select {
+			case <-end:
+				t.Fatalf("queries=%d, want %d", queries.Load(), want)
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}
+	await(1)
+	time.Sleep(70 * time.Millisecond)
+	if got := queries.Load(); got != 1 {
+		t.Fatalf("idle queries=%d, want 1", got)
+	}
+	deadline.Store(time.Now().Add(80 * time.Millisecond).UnixNano())
+	wake <- struct{}{}
+	await(2)
+	end := time.After(2 * time.Second)
+	for runs.Load() == 0 {
+		select {
+		case <-end:
+			t.Fatal("scheduled job did not run")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	// After the deadline is handled there is no standing periodic scan.
+	time.Sleep(1100 * time.Millisecond)
+	if got := queries.Load(); got != 3 {
+		t.Fatalf("idle queries after run=%d, want 3", got)
+	}
+	cancel()
+	<-done
+}
+
+func TestNextOrderAndLockDeadlines(t *testing.T) {
+	cleanup := testutil.SetupTestDatabases(t)
+	defer cleanup()
+	if next, err := data.NextOrderExpiration(); err != nil || next != nil {
+		t.Fatalf("empty order deadline=%v, err=%v", next, err)
+	}
+	if next, err := data.NextTransactionLockExpiration(); err != nil || next != nil {
+		t.Fatalf("empty lock deadline=%v, err=%v", next, err)
+	}
+	order := &mdb.Orders{TradeId: "deadline-order", OrderId: "deadline-order", Status: mdb.StatusWaitPay}
+	if err := dao.Mdb.Create(order).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := data.LockTransaction("tron", "deadline-wallet", "USDT", order.TradeId, 1, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := data.NextOrderExpiration(); err != nil || next == nil || time.Until(*next) < time.Minute {
+		t.Fatalf("order deadline=%v, err=%v", next, err)
+	}
+	if next, err := data.NextTransactionLockExpiration(); err != nil || next == nil || time.Until(*next) <= 0 {
+		t.Fatalf("lock deadline=%v, err=%v", next, err)
+	}
+}
 
 func TestMain(m *testing.M) {
 	oldFactory := http_client.CallbackClientFactory

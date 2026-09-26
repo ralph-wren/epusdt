@@ -325,7 +325,10 @@ func TestProcessAptosLedgerRoundMarksMatchingUSDTOrderPaid(t *testing.T) {
 	amount := 3.1
 	tradeID := "aptos_trade_1"
 	usdt := "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
-	body := aptosFungibleTransferBody(t, "0xabc", 101, receive, usdt, "3100000")
+	// Keep this version distinct from the other scanner fixtures because the
+	// process-level duplicate-transfer cache intentionally survives DB resets.
+	const ledgerVersion int64 = 10001
+	body := aptosFungibleTransferBody(t, "0xabc", ledgerVersion, receive, usdt, "3100000")
 
 	order := &mdb.Orders{
 		TradeId:         tradeID,
@@ -351,10 +354,10 @@ func TestProcessAptosLedgerRoundMarksMatchingUSDTOrderPaid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load state: %v", err)
 	}
-	provider := &fakeAptosProvider{bodiesByStart: map[int64][]byte{101: body}}
-	cursor := &aptosRuntimeCursor{initialized: true, lastSeenVersion: 100}
+	provider := &fakeAptosProvider{bodiesByStart: map[int64][]byte{ledgerVersion: body}}
+	cursor := &aptosRuntimeCursor{initialized: true, lastSeenVersion: ledgerVersion - 1}
 
-	if _, err = processAptosLedgerRound(context.Background(), provider, state, cursor, 101); err != nil {
+	if _, err = processAptosLedgerRound(context.Background(), provider, state, cursor, ledgerVersion); err != nil {
 		t.Fatalf("processAptosLedgerRound(): %v", err)
 	}
 	paid, err := data.GetOrderInfoByTradeId(tradeID)

@@ -170,6 +170,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 		if err = data.CreateOrderWithTransaction(dao.Mdb, order); err != nil {
 			return nil, err
 		}
+		data.NotifyOrderExpiration()
 		return buildCreateTransactionResponse(order), nil
 	}
 
@@ -239,6 +240,7 @@ func CreateTransaction(req *request.CreateTransactionRequest, apiKey *mdb.ApiKey
 		return nil, err
 	}
 	data.NotifyBinanceDepositOrderCreated(order)
+	data.NotifyOrderExpiration()
 
 	return buildCreateTransactionResponse(order), nil
 }
@@ -312,10 +314,11 @@ func orderProcessing(req *request.OrderProcessingRequest, opts orderProcessingOp
 		tx.Rollback()
 		return err
 	}
-
+	data.NotifyOrderExpiration()
 	// Load order to check parent-child relationship
 	order, err := data.GetOrderInfoByTradeId(req.TradeId)
 	if err != nil {
+		data.NotifyOrderCallback()
 		if strings.TrimSpace(req.Network) != "" && strings.TrimSpace(req.ReceiveAddress) != "" && strings.TrimSpace(req.Token) != "" && req.Amount > 0 {
 			if unlockErr := data.UnLockTransaction(req.Network, req.ReceiveAddress, req.Token, req.Amount); unlockErr != nil {
 				log.Sugar.Warnf("[order] fallback unlock transaction after pay success failed, trade_id=%s, err=%v", req.TradeId, unlockErr)
@@ -331,6 +334,7 @@ func orderProcessing(req *request.OrderProcessingRequest, opts orderProcessingOp
 
 	// Parent order paid directly: expire all sub-orders and release their locks
 	if order.ParentTradeId == "" {
+		data.NotifyOrderCallback()
 		subs, subErr := data.GetActiveSubOrders(order.TradeId)
 		if subErr != nil {
 			log.Sugar.Errorf("[order] get sub-orders for parent failed, trade_id=%s, err=%v", order.TradeId, subErr)
@@ -390,6 +394,8 @@ func orderProcessing(req *request.OrderProcessingRequest, opts orderProcessingOp
 		finalizeTx.Rollback()
 		return fmt.Errorf("commit parent finalize tx failed, parent_trade_id=%s: %w", parent.TradeId, err)
 	}
+	data.NotifyOrderExpiration()
+	data.NotifyOrderCallback()
 
 	// Sub-order should not trigger its own callback (notify_url is empty).
 	// OrderSuccessWithTransaction unconditionally sets callback_confirm=No,
@@ -729,6 +735,7 @@ func SwitchNetwork(req *request.SwitchNetworkRequest) (*response.CheckoutCounter
 		return nil, err
 	}
 	data.NotifyBinanceDepositOrderCreated(subOrder)
+	data.NotifyOrderExpiration()
 
 	// Mark parent as selected and refresh its expiration to match the sub-order
 	_ = data.MarkOrderSelected(parent.TradeId)
@@ -781,6 +788,7 @@ func completeWaitSelectOrder(parent *mdb.Orders, token string, network string) (
 		_ = data.UnLockTransactionByTradeId(parent.TradeId)
 		return nil, constant.OrderStatusConflict
 	}
+	data.NotifyOrderExpiration()
 
 	order, err := data.GetOrderInfoByTradeId(parent.TradeId)
 	if err != nil {
@@ -895,6 +903,7 @@ func completeWaitSelectOkPayOrder(parent *mdb.Orders, token string) (*response.C
 		_ = data.MarkProviderOrderFailed(parent.TradeId, mdb.PaymentProviderOkPay)
 		return nil, err
 	}
+	data.NotifyOrderExpiration()
 
 	order, err := data.GetOrderInfoByTradeId(parent.TradeId)
 	if err != nil {
@@ -1037,6 +1046,7 @@ func switchToOkPay(parent *mdb.Orders, token string) (*response.CheckoutCounterR
 		tx.Rollback()
 		return nil, err
 	}
+	data.NotifyOrderExpiration()
 
 	okpayOrder, err := createOkPayDepositOrder(subTradeID, amount, token, returnURL)
 	if err != nil {
