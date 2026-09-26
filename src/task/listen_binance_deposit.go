@@ -196,8 +196,15 @@ func StartBinanceDepositListener() {
 				log.Sugar.Errorf("[binance-deposit] poll failed: %v", err)
 			}
 		}
-		time.Sleep(activeOrderPollInterval)
+		time.Sleep(binanceDepositPollDelay(config, active))
 	}
+}
+
+func binanceDepositPollDelay(config binanceDepositConfig, active bool) time.Duration {
+	if active {
+		return config.PollInterval
+	}
+	return activeOrderPollInterval
 }
 
 func pollBinanceDeposits(ctx context.Context, config binanceDepositConfig) error {

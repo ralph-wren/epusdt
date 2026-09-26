@@ -102,6 +102,16 @@ func TestLoadBinanceDepositConfigDisabledWithoutCredentials(t *testing.T) {
 	}
 }
 
+func TestBinanceDepositPollDelay(t *testing.T) {
+	config := binanceDepositConfig{PollInterval: 45 * time.Second}
+	if got := binanceDepositPollDelay(config, true); got != 45*time.Second {
+		t.Fatalf("active poll delay = %v, want 45s", got)
+	}
+	if got := binanceDepositPollDelay(config, false); got != activeOrderPollInterval {
+		t.Fatalf("idle poll delay = %v, want %v", got, activeOrderPollInterval)
+	}
+}
+
 func TestPollBinanceDepositsSkipsDisabledOrIncompleteConfiguration(t *testing.T) {
 	configs := []binanceDepositConfig{
 		{Enabled: false, APIKey: "unused", SecretKey: "unused"},
